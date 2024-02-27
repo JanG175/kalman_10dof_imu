@@ -8,8 +8,9 @@
 #include "esp_qmc5883l.h"
 #include "esp_matrix.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 
-#define DT             10 // integration step in ms
+#define DT             2   // integration step in ms
 
 #define STD_DEV_V      0.8 // process noise
 #define STD_DEV_W      0.9 // sensor noise
