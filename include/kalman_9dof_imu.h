@@ -10,10 +10,10 @@
 #include "esp_log.h"
 
 #define DT             10 // integration step in ms
-#define MUTEX_MAX_WAIT (DT / portTICK_PERIOD_MS)
 
-#define STD_DEV_V      0.01 // process noise
-#define STD_DEV_W      0.2 // sensor noise
+#define STD_DEV_V      0.8 // process noise
+#define STD_DEV_W      0.9 // sensor noise
+
 
 typedef struct
 {

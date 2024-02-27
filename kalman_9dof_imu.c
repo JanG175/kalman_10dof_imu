@@ -223,9 +223,15 @@ static void kalman_euler_angle_read(void* pvParameters)
     matrix_t KSKt;
     matrix_alloc(&KSKt, KS.rows, Kt.cols);
 
+    TickType_t last_time = 0;
+    TickType_t time = 0;
+    TickType_t mutex_wait = 0;
+
     // Kalman filter
     while (1)
     {
+        last_time = xTaskGetTickCount();
+
         // new measurement
         imu_get_data(&acce_data, &gyro_data, &mag_data);
 
@@ -273,8 +279,11 @@ static void kalman_euler_angle_read(void* pvParameters)
         matrix_mul(&KS, &Kt, &KSKt);
         matrix_sub(&Ppri, &KSKt, &Ppost);
 
+        time = xTaskGetTickCount();
+        mutex_wait = DT / portTICK_PERIOD_MS - (time - last_time);
+
         // calculate euler angle from gyro
-        if (xSemaphoreTake(mutex, MUTEX_MAX_WAIT) == pdTRUE)
+        if (xSemaphoreTake(mutex, mutex_wait) == pdTRUE)
         {
             euler.acce_roll = Xpost.array[0][0];
             euler.acce_pitch = Xpost.array[0][1];
@@ -286,7 +295,7 @@ static void kalman_euler_angle_read(void* pvParameters)
 
             xSemaphoreGive(mutex);
 
-            vTaskDelay(DT / portTICK_PERIOD_MS);
+            xTaskDelayUntil(&last_time, DT / portTICK_PERIOD_MS);
         }
         else
         {
@@ -394,7 +403,7 @@ void imu_init(imu_i2c_conf_t imu_conf)
         ESP_LOGE(TAG, "Failed to take mutex");
     }
 
-    xTaskCreate(kalman_euler_angle_read, "kalman euler angle read", 4096, NULL, 3, NULL);
+    xTaskCreate(kalman_euler_angle_read, "kalman euler angle read", 4096, NULL, 10, NULL);
 }
 
 
@@ -426,7 +435,7 @@ void imu_get_data(mpu6050_acce_value_t* acce, mpu6050_gyro_value_t* gyro, magnet
 */
 void imu_get_euler_angle(kalman_euler_angle_t* euler_angle)
 {
-    if (xSemaphoreTake(mutex, portMAX_DELAY) == pdTRUE)
+    if (xSemaphoreTake(mutex, 0) == pdTRUE)
     {
         euler_angle->acce_roll = euler.acce_roll;
         euler_angle->acce_pitch = euler.acce_pitch;
