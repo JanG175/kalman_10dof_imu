@@ -55,15 +55,20 @@ static void kalman_euler_angle_read(void* pvParameters)
 
     imu_get_data(&acce_data, &gyro_data, &mag_data);
 
-    euler_angle_t euler_angle;
-    calculate_euler_angle_from_accel(&acce_data, &mag_data, &euler_angle);
+    kalman_euler_angle_t kalman_euler_angle;
+    euler_angle_t acce_euler_angle;
+    calculate_euler_angle_from_accel(&acce_data, &mag_data, &acce_euler_angle);
+
+    kalman_euler_angle.gyro_roll = acce_euler_angle.roll;
+    kalman_euler_angle.gyro_pitch = acce_euler_angle.pitch;
+    kalman_euler_angle.gyro_yaw = acce_euler_angle.yaw;
 
     // zero roll, pitch and yaw with accelerometer
     if (xSemaphoreTake(mutex, portMAX_DELAY) == pdTRUE)
     {
-        euler.gyro_roll = euler_angle.roll;
-        euler.gyro_pitch = euler_angle.pitch;
-        euler.gyro_yaw = euler_angle.yaw;
+        euler.gyro_roll = acce_euler_angle.roll;
+        euler.gyro_pitch = acce_euler_angle.pitch;
+        euler.gyro_yaw = acce_euler_angle.yaw;
 
         xSemaphoreGive(mutex);
     }
@@ -140,9 +145,9 @@ static void kalman_euler_angle_read(void* pvParameters)
 
     matrix_t Xpost;
     matrix_alloc(&Xpost, 2, 3);
-    Xpost.array[0][0] = euler_angle.roll;
-    Xpost.array[0][1] = euler_angle.pitch;
-    Xpost.array[0][2] = euler_angle.yaw;
+    Xpost.array[0][0] = acce_euler_angle.roll;
+    Xpost.array[0][1] = acce_euler_angle.pitch;
+    Xpost.array[0][2] = acce_euler_angle.yaw;
     Xpost.array[1][0] = 0.0;
     Xpost.array[1][1] = 0.0;
     Xpost.array[1][2] = 0.0;
@@ -238,15 +243,15 @@ static void kalman_euler_angle_read(void* pvParameters)
         // new measurement
         imu_get_data(&acce_data, &gyro_data, &mag_data);
 
-        calculate_euler_angle_from_accel(&acce_data, &mag_data, &euler_angle);
+        calculate_euler_angle_from_accel(&acce_data, &mag_data, &acce_euler_angle);
 
         U.array[0][0] = gyro_data.gyro_x;
         U.array[0][1] = gyro_data.gyro_y;
         U.array[0][2] = gyro_data.gyro_z;
 
-        Y.array[0][0] = euler_angle.roll;
-        Y.array[0][1] = euler_angle.pitch;
-        Y.array[0][2] = euler_angle.yaw;
+        Y.array[0][0] = acce_euler_angle.roll;
+        Y.array[0][1] = acce_euler_angle.pitch;
+        Y.array[0][2] = acce_euler_angle.yaw;
 
         // Xpri
         matrix_mul(&A, &Xpost, &AXpost);
@@ -294,15 +299,23 @@ static void kalman_euler_angle_read(void* pvParameters)
         }
 
         // calculate euler angle from gyro
+        kalman_euler_angle.acce_roll = Xpost.array[0][0];
+        kalman_euler_angle.acce_pitch = Xpost.array[0][1];
+        kalman_euler_angle.mag_yaw = Xpost.array[0][2];
+
+        kalman_euler_angle.gyro_roll += (gyro_data.gyro_x - Xpost.array[1][0]) * dt;
+        kalman_euler_angle.gyro_pitch += (gyro_data.gyro_y - Xpost.array[1][1]) * dt;
+        kalman_euler_angle.gyro_yaw += (gyro_data.gyro_z - Xpost.array[1][2]) * dt;
+
         if (xSemaphoreTake(mutex, mutex_wait / portTICK_PERIOD_MS) == pdTRUE)
         {
-            euler.acce_roll = Xpost.array[0][0];
-            euler.acce_pitch = Xpost.array[0][1];
-            euler.mag_yaw = Xpost.array[0][2];
+            euler.acce_roll = kalman_euler_angle.acce_roll;
+            euler.acce_pitch = kalman_euler_angle.acce_pitch;
+            euler.mag_yaw = kalman_euler_angle.mag_yaw;
 
-            euler.gyro_roll += (gyro_data.gyro_x - Xpost.array[1][0]) * dt;
-            euler.gyro_pitch += (gyro_data.gyro_y - Xpost.array[1][1]) * dt;
-            euler.gyro_yaw += (gyro_data.gyro_z - Xpost.array[1][2]) * dt;
+            euler.gyro_roll = kalman_euler_angle.gyro_roll;
+            euler.gyro_pitch = kalman_euler_angle.gyro_pitch;
+            euler.gyro_yaw = kalman_euler_angle.gyro_yaw;
 
             xSemaphoreGive(mutex);
 
@@ -456,7 +469,7 @@ void imu_get_data(mpu6050_acce_value_t* acce, mpu6050_gyro_value_t* gyro, magnet
 */
 void imu_get_euler_angle(kalman_euler_angle_t* euler_angle)
 {
-    if (xSemaphoreTake(mutex, 0) == pdTRUE)
+    if (xSemaphoreTake(mutex, portMAX_DELAY) == pdTRUE)
     {
         euler_angle->acce_roll = euler.acce_roll;
         euler_angle->acce_pitch = euler.acce_pitch;
