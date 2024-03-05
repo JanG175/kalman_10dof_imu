@@ -42,7 +42,7 @@ static void calculate_euler_angle_from_accel(mpu6050_acce_value_t* acce_data, ma
  * 
  * @param euler euler angle
 */
-static void kalman_euler_angle_read(void* pvParameters)
+static IRAM_ATTR void kalman_euler_angle_read(void* pvParameters)
 {
     double dt = (double)DT / 1000.0;
     double std_dev_v = STD_DEV_V;
@@ -74,7 +74,7 @@ static void kalman_euler_angle_read(void* pvParameters)
     }
     else
     {
-        ESP_LOGE(TAG, "Failed to take mutex");
+        ESP_LOGE(TAG, "Failed to take mutex to init task");
     }
 
     /*
@@ -228,17 +228,14 @@ static void kalman_euler_angle_read(void* pvParameters)
     matrix_t KSKt;
     matrix_alloc(&KSKt, KS.rows, Kt.cols);
 
-    int64_t last_time = 0;
-    int64_t time = 0;
-    int64_t mutex_wait = 0;
+    TickType_t time = 0;
+    TickType_t last_time = 0;
+    TickType_t mutex_wait = 0;
 
     // Kalman filter
     while (1)
     {
-        if (DT < 10)
-            last_time = esp_timer_get_time();
-        else
-            last_time = xTaskGetTickCount();
+        last_time = xTaskGetTickCount();
 
         // new measurement
         imu_get_data(&acce_data, &gyro_data, &mag_data);
@@ -287,16 +284,9 @@ static void kalman_euler_angle_read(void* pvParameters)
         matrix_mul(&KS, &Kt, &KSKt);
         matrix_sub(&Ppri, &KSKt, &Ppost);
 
-        if (DT < 10)
-        {
-            time = esp_timer_get_time();
-            mutex_wait = DT - (time - last_time) / 1000;
-        }
-        else
-        {
-            time = xTaskGetTickCount();
-            mutex_wait = DT - (time - last_time) * portTICK_PERIOD_MS;
-        }
+        // calculate time left to wait
+        time = xTaskGetTickCount();
+        mutex_wait = DT - (time - last_time) * portTICK_PERIOD_MS;
 
         // calculate euler angle from gyro
         kalman_euler_angle.acce_roll = Xpost.array[0][0];
@@ -319,21 +309,11 @@ static void kalman_euler_angle_read(void* pvParameters)
 
             xSemaphoreGive(mutex);
 
-            if (DT < 10)
-            {
-                do
-                {
-                    time = esp_timer_get_time();
-                } while (time - last_time < DT * 1000);
-            }
-            else
-            {
-                xTaskDelayUntil(&last_time, DT / portTICK_PERIOD_MS);
-            }
+            xTaskDelayUntil(&last_time, DT / portTICK_PERIOD_MS);
         }
         else
         {
-            ESP_LOGD(TAG, "Failed to take mutex");
+            ESP_LOGE(TAG, "Failed to take mutex to update");
         }
     }
 
@@ -434,10 +414,10 @@ void imu_init(imu_i2c_conf_t imu_conf)
     }
     else
     {
-        ESP_LOGE(TAG, "Failed to take mutex");
+        ESP_LOGE(TAG, "Failed to take mutex to init");
     }
 
-    xTaskCreatePinnedToCore(kalman_euler_angle_read, "kalman euler angle read", 4096, NULL, 10, NULL, 0);
+    xTaskCreate(kalman_euler_angle_read, "kalman euler angle read", 4096, NULL, 10, NULL);
 }
 
 
@@ -469,7 +449,7 @@ void imu_get_data(mpu6050_acce_value_t* acce, mpu6050_gyro_value_t* gyro, magnet
 */
 void imu_get_euler_angle(kalman_euler_angle_t* euler_angle)
 {
-    if (xSemaphoreTake(mutex, portMAX_DELAY) == pdTRUE)
+    if (xSemaphoreTake(mutex, 0) == pdTRUE)
     {
         euler_angle->acce_roll = euler.acce_roll;
         euler_angle->acce_pitch = euler.acce_pitch;
@@ -483,6 +463,6 @@ void imu_get_euler_angle(kalman_euler_angle_t* euler_angle)
     }
     else
     {
-        ESP_LOGE(TAG, "Failed to take mutex");
+        ESP_LOGE(TAG, "Failed to take mutex to read");
     }
 }

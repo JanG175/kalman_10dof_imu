@@ -8,7 +8,6 @@
 #include "esp_qmc5883l.h"
 #include "esp_matrix.h"
 #include "esp_log.h"
-#include "esp_timer.h"
 
 #define DT             2   // integration step in ms
 
