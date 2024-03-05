@@ -6,7 +6,7 @@ static mpu6050_handle_t mpu;
 static qmc5883l_conf_t qmc;
 
 static SemaphoreHandle_t mutex = NULL;
-kalman_euler_angle_t euler;
+static kalman_euler_angle_t euler;
 
 
 /**
