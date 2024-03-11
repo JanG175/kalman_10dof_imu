@@ -21,15 +21,15 @@ static void calculate_euler_angle_from_accel(mpu6050_acce_value_t* acce_data, ma
 {
     euler_angle->roll = atan2f(acce_data->acce_y, acce_data->acce_z);
 
-    euler_angle->pitch = atan2f(-acce_data->acce_x, acce_data->acce_z);
+    euler_angle->pitch = atan2f(acce_data->acce_x, acce_data->acce_z);
 
-    mag_data->x = mag_data->x * cosf(euler_angle->pitch) +
+    float mag_x = mag_data->x * cosf(euler_angle->pitch) +
                     mag_data->z * cosf(euler_angle->roll) * sinf(euler_angle->pitch) +
                     mag_data->y * sinf(euler_angle->roll) * sinf(euler_angle->pitch);
 
-    mag_data->y = mag_data->y * cosf(euler_angle->roll) - mag_data->z * sinf(euler_angle->roll);
+    float mag_y = mag_data->y * cosf(euler_angle->roll) - mag_data->z * sinf(euler_angle->roll);
 
-    euler_angle->yaw = atan2f(-mag_data->y, mag_data->x);
+    euler_angle->yaw = atan2f(-mag_y, mag_x);
 
     euler_angle->roll = euler_angle->roll * 180.0f / M_PI;
     euler_angle->pitch = euler_angle->pitch * 180.0f / M_PI;
@@ -284,10 +284,6 @@ static IRAM_ATTR void kalman_euler_angle_read(void* pvParameters)
         matrix_mul(&KS, &Kt, &KSKt);
         matrix_sub(&Ppri, &KSKt, &Ppost);
 
-        // calculate time left to wait
-        time = xTaskGetTickCount();
-        mutex_wait = DT - (time - last_time) * portTICK_PERIOD_MS;
-
         // calculate euler angle from gyro
         kalman_euler_angle.acce_roll = Xpost.array[0][0];
         kalman_euler_angle.acce_pitch = Xpost.array[0][1];
@@ -296,6 +292,10 @@ static IRAM_ATTR void kalman_euler_angle_read(void* pvParameters)
         kalman_euler_angle.gyro_roll += (gyro_data.gyro_x - Xpost.array[1][0]) * dt;
         kalman_euler_angle.gyro_pitch += (gyro_data.gyro_y - Xpost.array[1][1]) * dt;
         kalman_euler_angle.gyro_yaw += (gyro_data.gyro_z - Xpost.array[1][2]) * dt;
+
+        // calculate time left to wait
+        time = xTaskGetTickCount();
+        mutex_wait = DT - (time - last_time) * portTICK_PERIOD_MS;
 
         if (xSemaphoreTake(mutex, mutex_wait / portTICK_PERIOD_MS) == pdTRUE)
         {
@@ -433,11 +433,16 @@ void imu_get_data(mpu6050_acce_value_t* acce, mpu6050_gyro_value_t* gyro, magnet
     ESP_ERROR_CHECK(mpu6050_get_acce(mpu, acce));
     ESP_ERROR_CHECK(mpu6050_get_gyro(mpu, gyro));
 
+    // MPU6050 is mounted backwards
+    acce->acce_y = -acce->acce_y;
+    gyro->gyro_x = -gyro->gyro_x;
+    gyro->gyro_y = -gyro->gyro_y;
+
     float x, y, z;
     qmc5883l_read_magnetometer(qmc, &x, &y, &z);
 
-    mag->x = -y; // MPU6050 OX axis is QMC -OY axis
-    mag->y = x;  // MPU6050 OY axis is QMC OX axis
+    mag->x = y;  // MPU6050 OX axis is QMC OY axis
+    mag->y = -x; // MPU6050 OY axis is QMC -OX axis
     mag->z = z;  // MPU6050 OZ axis is QMC OZ axis
 }
 

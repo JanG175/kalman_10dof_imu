@@ -11,8 +11,8 @@
 
 #define DT             2   // integration step in ms
 
-#define STD_DEV_V      0.8 // process noise
-#define STD_DEV_W      0.9 // sensor noise
+#define STD_DEV_V      0.01 // process noise
+#define STD_DEV_W      0.02 // sensor noise
 
 
 typedef struct
