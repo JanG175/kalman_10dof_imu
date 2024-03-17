@@ -29,7 +29,7 @@ static void calculate_euler_angle_from_accel(mpu6050_acce_value_t* acce_data, ma
 
     float mag_y = mag_data->y * cosf(euler_angle->roll) - mag_data->z * sinf(euler_angle->roll);
 
-    euler_angle->yaw = atan2f(-mag_y, mag_x);
+    euler_angle->yaw = atan2f(mag_y, mag_x);
 
     euler_angle->roll = euler_angle->roll * 180.0f / M_PI;
     euler_angle->pitch = euler_angle->pitch * 180.0f / M_PI;
@@ -437,6 +437,7 @@ void imu_get_data(mpu6050_acce_value_t* acce, mpu6050_gyro_value_t* gyro, magnet
     acce->acce_y = -acce->acce_y;
     gyro->gyro_x = -gyro->gyro_x;
     gyro->gyro_y = -gyro->gyro_y;
+    gyro->gyro_z = -gyro->gyro_z;
 
     float x, y, z;
     qmc5883l_read_magnetometer(qmc, &x, &y, &z);
