@@ -57,6 +57,7 @@ typedef struct
     float gyro_yaw;
 
     float pres_height;
+    float height;
 } kalman_data_t;
 
 

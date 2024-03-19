@@ -17,6 +17,15 @@ static bmp280_conf_t bmp;
 static SemaphoreHandle_t mutex = NULL;
 static kalman_data_t static_kalman_data;
 
+static float calculate_z_accel(mpu6050_acce_value_t* acce_data)
+{
+    float x = acce_data->acce_x;
+    float y = acce_data->acce_y;
+    float z = acce_data->acce_z;
+
+    return sqrtf(x * x + y * y + z * z);
+}
+
 
 /**
  * @brief calculate euler angle from accelerometer data
@@ -106,7 +115,7 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
 
     */
 
-    // state space model
+    // state space model for euler angles
     matrix_t A;
     matrix_alloc(&A, 2, 2);
     A.array[0][0] = 1.0;
@@ -177,9 +186,9 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
 
     matrix_t Y;
     matrix_alloc(&Y, 1, 3);
-    U.array[0][0] = 0.0;
-    U.array[0][1] = 0.0;
-    U.array[0][2] = 0.0;
+    Y.array[0][0] = 0.0;
+    Y.array[0][1] = 0.0;
+    Y.array[0][2] = 0.0;
 
     matrix_t E;
     matrix_alloc(&E, 1, 3);
@@ -238,6 +247,127 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
     matrix_t KSKt;
     matrix_alloc(&KSKt, KS.rows, Kt.cols);
 
+    // state space model for height
+    matrix_t A_h;
+    matrix_alloc(&A_h, 2, 2);
+    A_h.array[0][0] = 1.0;
+    A_h.array[0][1] = dt;
+    A_h.array[1][0] = 0.0;
+    A_h.array[1][1] = 1.0;
+
+    matrix_t B_h;
+    matrix_alloc(&B_h, 2, 1);
+    B_h.array[0][0] = 0.5*dt*dt;
+    B_h.array[1][0] = dt;
+
+    matrix_t C_h;
+    matrix_alloc(&C_h, 1, 2);
+    C_h.array[0][0] = 1.0;
+    C_h.array[0][1] = 0.0;
+
+    // noise
+    matrix_t V_h;
+    matrix_alloc(&V_h, 2, 2);
+    V_h.array[0][0] = pow(std_dev_v, 2.0);
+    V_h.array[0][1] = 0.0;
+    V_h.array[1][0] = 0.0;
+    V_h.array[1][1] = pow(std_dev_v, 2.0);
+
+    matrix_t W_h;
+    matrix_alloc(&W_h, 1, 1);
+    W_h.array[0][0] = pow(std_dev_w, 2.0);
+
+    // initial states
+    matrix_t Xpri_h;
+    matrix_alloc(&Xpri_h, 2, 1);
+    Xpri_h.array[0][0] = 0.0;
+    Xpri_h.array[1][0] = 0.0;
+
+    matrix_t Ppri_h;
+    matrix_alloc(&Ppri_h, 2, 2);
+    Ppri_h.array[0][0] = 1.0;
+    Ppri_h.array[0][1] = 0.0;
+    Ppri_h.array[1][0] = 0.0;
+    Ppri_h.array[1][1] = 1.0;
+
+    matrix_t Xpost_h;
+    matrix_alloc(&Xpost_h, 2, 1);
+    Xpost_h.array[0][0] = pres_h_data;
+    Xpost_h.array[1][0] = 0.0;
+
+    matrix_t Ppost_h;
+    matrix_alloc(&Ppost_h, 2, 2);
+    Ppost_h.array[0][0] = 1.0;
+    Ppost_h.array[0][1] = 0.0;
+    Ppost_h.array[1][0] = 0.0;
+    Ppost_h.array[1][1] = 1.0;
+
+    matrix_t U_h;
+    matrix_alloc(&U_h, 1, 1);
+    U_h.array[0][0] = 0.0;
+
+    matrix_t Y_h;
+    matrix_alloc(&Y_h, 1, 1);
+    Y_h.array[0][0] = 0.0;
+
+    matrix_t E_h;
+    matrix_alloc(&E_h, 1, 1);
+
+    matrix_t S_h;
+    matrix_alloc(&S_h, 1, 1);
+
+    matrix_t K_h;
+    matrix_alloc(&K_h, 2, 1);
+
+    // auxilary matrices
+    matrix_t AXpost_h;
+    matrix_alloc(&AXpost_h, A_h.rows, Xpost_h.cols);
+
+    matrix_t BU_h;
+    matrix_alloc(&BU_h, B_h.rows, U_h.cols);
+
+    matrix_t APpost_h;
+    matrix_alloc(&APpost_h, A_h.rows, Ppost_h.cols);
+
+    matrix_t At_h;
+    matrix_alloc(&At_h, A_h.cols, A_h.rows);
+    matrix_trans(&A_h, &At_h);
+
+    matrix_t APpostAt_h;
+    matrix_alloc(&APpostAt_h, APpost_h.rows, At_h.cols);
+
+    matrix_t CXpri_h;
+    matrix_alloc(&CXpri_h, C_h.rows, Xpri_h.cols);
+
+    matrix_t CPpri_h;
+    matrix_alloc(&CPpri_h, C_h.rows, Ppri_h.cols);
+
+    matrix_t Ct_h;
+    matrix_alloc(&Ct_h, C_h.cols, C_h.rows);
+    matrix_trans(&C_h, &Ct_h);
+
+    matrix_t CPpriCt_h;
+    matrix_alloc(&CPpriCt_h, CPpri_h.rows, Ct_h.cols);
+
+    matrix_t Sinv_h;
+    matrix_alloc(&Sinv_h, S_h.rows, S_h.cols);
+
+    matrix_t PpriCt_h;
+    matrix_alloc(&PpriCt_h, Ppri_h.rows, Ct_h.cols);
+
+    matrix_t KE_h;
+    matrix_alloc(&KE_h, K_h.rows, E_h.cols);
+
+    matrix_t KS_h;
+    matrix_alloc(&KS_h, K_h.rows, S_h.cols);
+
+    matrix_t Kt_h;
+    matrix_alloc(&Kt_h, K_h.cols, K_h.rows);
+
+    matrix_t KSKt_h;
+    matrix_alloc(&KSKt_h, KS_h.rows, Kt_h.cols);
+
+    // time variables
     TickType_t time = 0;
     TickType_t last_time = 0;
     TickType_t mutex_wait = 0;
@@ -259,6 +389,11 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
         Y.array[0][0] = acce_euler_angle.roll;
         Y.array[0][1] = acce_euler_angle.pitch;
         Y.array[0][2] = acce_euler_angle.yaw;
+
+        U_h.array[0][0] = calculate_z_accel(&acce_data);
+        Y_h.array[0][0] = pres_h_data;
+
+        // euler angles kalman
 
         // Xpri
         matrix_mul(&A, &Xpost, &AXpost);
@@ -294,6 +429,42 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
         matrix_mul(&KS, &Kt, &KSKt);
         matrix_sub(&Ppri, &KSKt, &Ppost);
 
+        // height kalman
+
+        // Xpri_h
+        matrix_mul(&A_h, &Xpost_h, &AXpost_h);
+        matrix_mul(&B_h, &U_h, &BU_h);
+        matrix_add(&AXpost_h, &BU_h, &Xpri_h);
+
+        // Ppri_h
+        matrix_mul(&A_h, &Ppost_h, &APpost_h);
+        matrix_mul(&APpost_h, &At_h, &APpostAt_h);
+        matrix_add(&APpostAt_h, &V_h, &Ppri_h);
+
+        // E_h
+        matrix_mul(&C_h, &Xpri_h, &CXpri_h);
+        matrix_sub(&Y_h, &CXpri_h, &E_h);
+
+        // S_h
+        matrix_mul(&C_h, &Ppri_h, &CPpri_h);
+        matrix_mul(&CPpri_h, &Ct_h, &CPpriCt_h);
+        matrix_add(&CPpriCt_h, &W_h, &S_h);
+
+        // K_h
+        matrix_inv(&S_h, &Sinv_h);
+        matrix_mul(&Ppri_h, &Ct_h, &PpriCt_h);
+        matrix_mul(&PpriCt_h, &Sinv_h, &K_h);
+
+        // Xpost_h
+        matrix_mul(&K_h, &E_h, &KE_h);
+        matrix_add(&Xpri_h, &KE_h, &Xpost_h);
+
+        // Ppost_h
+        matrix_mul(&K_h, &S_h, &KS_h);
+        matrix_trans(&K_h, &Kt_h);
+        matrix_mul(&KS_h, &Kt_h, &KSKt_h);
+        matrix_sub(&Ppri_h, &KSKt_h, &Ppost_h);
+
         // calculate euler angle from gyro
         task_kalman_data.acce_roll = Xpost.array[0][0];
         task_kalman_data.acce_pitch = Xpost.array[0][1];
@@ -302,6 +473,8 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
         task_kalman_data.gyro_roll += (gyro_data.gyro_x - Xpost.array[1][0]) * dt;
         task_kalman_data.gyro_pitch += (gyro_data.gyro_y - Xpost.array[1][1]) * dt;
         task_kalman_data.gyro_yaw += (gyro_data.gyro_z - Xpost.array[1][2]) * dt;
+
+        task_kalman_data.pres_height = Xpost_h.array[0][0];
 
         // calculate time left to wait
         time = xTaskGetTickCount();
@@ -318,6 +491,7 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
             static_kalman_data.gyro_yaw = task_kalman_data.gyro_yaw;
 
             static_kalman_data.pres_height = pres_h_data;
+            static_kalman_data.height = task_kalman_data.pres_height;
 
             xSemaphoreGive(mutex);
 
@@ -359,6 +533,36 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
     matrix_dealloc(&KS);
     matrix_dealloc(&Kt);
     matrix_dealloc(&KSKt);
+
+    matrix_dealloc(&A_h);
+    matrix_dealloc(&B_h);
+    matrix_dealloc(&C_h);
+    matrix_dealloc(&V_h);
+    matrix_dealloc(&W_h);
+    matrix_dealloc(&E_h);
+    matrix_dealloc(&S_h);
+    matrix_dealloc(&K_h);
+    matrix_dealloc(&U_h);
+    matrix_dealloc(&Y_h);
+    matrix_dealloc(&Xpri_h);
+    matrix_dealloc(&Ppri_h);
+    matrix_dealloc(&Xpost_h);
+    matrix_dealloc(&Ppost_h);
+    matrix_dealloc(&AXpost_h);
+    matrix_dealloc(&BU_h);
+    matrix_dealloc(&APpost_h);
+    matrix_dealloc(&At_h);
+    matrix_dealloc(&APpostAt_h);
+    matrix_dealloc(&CXpri_h);
+    matrix_dealloc(&CPpri_h);
+    matrix_dealloc(&Ct_h);
+    matrix_dealloc(&CPpriCt_h);
+    matrix_dealloc(&Sinv_h);
+    matrix_dealloc(&PpriCt_h);
+    matrix_dealloc(&KE_h);
+    matrix_dealloc(&KS_h);
+    matrix_dealloc(&Kt_h);
+    matrix_dealloc(&KSKt_h);
 
     vTaskDelete(NULL);
 }
@@ -429,6 +633,9 @@ void imu_init(imu_i2c_conf_t imu_conf)
         static_kalman_data.gyro_pitch = 0.0f;
         static_kalman_data.gyro_yaw = 0.0f;
 
+        static_kalman_data.pres_height = 0.0f;
+        static_kalman_data.height = 0.0f;
+
         xSemaphoreGive(mutex);
     }
     else
@@ -491,6 +698,7 @@ void imu_get_kalman_data(kalman_data_t* kalman_data)
         kalman_data->gyro_yaw = static_kalman_data.gyro_yaw;
 
         kalman_data->pres_height = static_kalman_data.pres_height;
+        kalman_data->height = static_kalman_data.height;
 
         xSemaphoreGive(mutex);
     }
