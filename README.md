@@ -4,7 +4,8 @@
 ## Notes
 * Adjust Kalman filter with macros: `STD_DEV_V` and `STD_DEV_W` in `kalman_mpu6050.h`.
 * Make sure to comment out `#define QMC5883L_I2C_INIT            1 // uncomment to initialize I2C driver` in `esp_qmc5883l.h`.
-* This component requires `mpu6050`, `esp_matrix` and `esp_qmc5883l` components to work.
+* Make sure to comment out `// #define BMP280_I2C_INIT   1 // uncomment to initialize I2C driver` in `esp_bmp280.h`.
+* This component requires `mpu6050`, `esp_qmc5883l`, `esp_bmp280` and `esp_matrix` components to work.
 * Check `imu_get_data()` and `calculate_euler_angle_from_accel` functions for proper MPU6050 and QMC5883L mounting and edit them if needed.
 
 ## SDK configuration
@@ -20,6 +21,7 @@
 * https://github.com/espressif/esp-bsp/tree/8a042287f67573e757ff25f8bb6372c3fffb5313/components/mpu6050
 * https://github.com/JanG175/esp_matrix
 * https://github.com/JanG175/esp_qmc5883l
+* https://github.com/JanG175/esp_bmp280
 
 ## How 2 use?
 ```C

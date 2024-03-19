@@ -1,12 +1,21 @@
+/**
+ * @file kalman_9dof_imu.c
+ * @author JanG175
+ * @brief 9DOF IMU sensor made from sensor fusion of MPU6050 accelerometer and gyroscope and QMC5883L magnetometer
+ * 
+ * @copyright Apache 2.0
+*/
+
 #include <stdio.h>
 #include "kalman_9dof_imu.h"
 
 static const char* TAG = "kalman_9_dof_imu";
 static mpu6050_handle_t mpu;
 static qmc5883l_conf_t qmc;
+static bmp280_conf_t bmp;
 
 static SemaphoreHandle_t mutex = NULL;
-static kalman_euler_angle_t euler;
+static kalman_data_t static_kalman_data;
 
 
 /**
@@ -38,11 +47,11 @@ static void calculate_euler_angle_from_accel(mpu6050_acce_value_t* acce_data, ma
 
 
 /**
- * @brief task read euler angle from MPU6050 sensor
+ * @brief kalman filter task
  * 
- * @param euler euler angle
+ * @param pvParameters task parameters
 */
-static IRAM_ATTR void kalman_euler_angle_read(void* pvParameters)
+static IRAM_ATTR void kalman_data_read(void* pvParameters)
 {
     double dt = (double)DT / 1000.0;
     double std_dev_v = STD_DEV_V;
@@ -52,23 +61,24 @@ static IRAM_ATTR void kalman_euler_angle_read(void* pvParameters)
     mpu6050_acce_value_t acce_data;
     mpu6050_gyro_value_t gyro_data;
     magnetometer_raw_t mag_data;
+    float pres_h_data;
 
-    imu_get_data(&acce_data, &gyro_data, &mag_data);
+    imu_get_data(&acce_data, &gyro_data, &mag_data, &pres_h_data);
 
-    kalman_euler_angle_t kalman_euler_angle;
+    kalman_data_t task_kalman_data;
     euler_angle_t acce_euler_angle;
     calculate_euler_angle_from_accel(&acce_data, &mag_data, &acce_euler_angle);
 
-    kalman_euler_angle.gyro_roll = acce_euler_angle.roll;
-    kalman_euler_angle.gyro_pitch = acce_euler_angle.pitch;
-    kalman_euler_angle.gyro_yaw = acce_euler_angle.yaw;
+    task_kalman_data.gyro_roll = acce_euler_angle.roll;
+    task_kalman_data.gyro_pitch = acce_euler_angle.pitch;
+    task_kalman_data.gyro_yaw = acce_euler_angle.yaw;
 
     // zero roll, pitch and yaw with accelerometer
     if (xSemaphoreTake(mutex, portMAX_DELAY) == pdTRUE)
     {
-        euler.gyro_roll = acce_euler_angle.roll;
-        euler.gyro_pitch = acce_euler_angle.pitch;
-        euler.gyro_yaw = acce_euler_angle.yaw;
+        static_kalman_data.gyro_roll = acce_euler_angle.roll;
+        static_kalman_data.gyro_pitch = acce_euler_angle.pitch;
+        static_kalman_data.gyro_yaw = acce_euler_angle.yaw;
 
         xSemaphoreGive(mutex);
     }
@@ -238,7 +248,7 @@ static IRAM_ATTR void kalman_euler_angle_read(void* pvParameters)
         last_time = xTaskGetTickCount();
 
         // new measurement
-        imu_get_data(&acce_data, &gyro_data, &mag_data);
+        imu_get_data(&acce_data, &gyro_data, &mag_data, &pres_h_data);
 
         calculate_euler_angle_from_accel(&acce_data, &mag_data, &acce_euler_angle);
 
@@ -285,13 +295,13 @@ static IRAM_ATTR void kalman_euler_angle_read(void* pvParameters)
         matrix_sub(&Ppri, &KSKt, &Ppost);
 
         // calculate euler angle from gyro
-        kalman_euler_angle.acce_roll = Xpost.array[0][0];
-        kalman_euler_angle.acce_pitch = Xpost.array[0][1];
-        kalman_euler_angle.mag_yaw = Xpost.array[0][2];
+        task_kalman_data.acce_roll = Xpost.array[0][0];
+        task_kalman_data.acce_pitch = Xpost.array[0][1];
+        task_kalman_data.mag_yaw = Xpost.array[0][2];
 
-        kalman_euler_angle.gyro_roll += (gyro_data.gyro_x - Xpost.array[1][0]) * dt;
-        kalman_euler_angle.gyro_pitch += (gyro_data.gyro_y - Xpost.array[1][1]) * dt;
-        kalman_euler_angle.gyro_yaw += (gyro_data.gyro_z - Xpost.array[1][2]) * dt;
+        task_kalman_data.gyro_roll += (gyro_data.gyro_x - Xpost.array[1][0]) * dt;
+        task_kalman_data.gyro_pitch += (gyro_data.gyro_y - Xpost.array[1][1]) * dt;
+        task_kalman_data.gyro_yaw += (gyro_data.gyro_z - Xpost.array[1][2]) * dt;
 
         // calculate time left to wait
         time = xTaskGetTickCount();
@@ -299,13 +309,15 @@ static IRAM_ATTR void kalman_euler_angle_read(void* pvParameters)
 
         if (xSemaphoreTake(mutex, mutex_wait / portTICK_PERIOD_MS) == pdTRUE)
         {
-            euler.acce_roll = kalman_euler_angle.acce_roll;
-            euler.acce_pitch = kalman_euler_angle.acce_pitch;
-            euler.mag_yaw = kalman_euler_angle.mag_yaw;
+            static_kalman_data.acce_roll = task_kalman_data.acce_roll;
+            static_kalman_data.acce_pitch = task_kalman_data.acce_pitch;
+            static_kalman_data.mag_yaw = task_kalman_data.mag_yaw;
 
-            euler.gyro_roll = kalman_euler_angle.gyro_roll;
-            euler.gyro_pitch = kalman_euler_angle.gyro_pitch;
-            euler.gyro_yaw = kalman_euler_angle.gyro_yaw;
+            static_kalman_data.gyro_roll = task_kalman_data.gyro_roll;
+            static_kalman_data.gyro_pitch = task_kalman_data.gyro_pitch;
+            static_kalman_data.gyro_yaw = task_kalman_data.gyro_yaw;
+
+            static_kalman_data.pres_height = pres_h_data;
 
             xSemaphoreGive(mutex);
 
@@ -391,6 +403,13 @@ void imu_init(imu_i2c_conf_t imu_conf)
                         QMC5883L_DATA_OUTPUT_RATE_200, QMC5883L_CONTINUOUS_MODE, 
                         QMC5883L_POINTER_ROLLOVER_FUNCTION_NORMAL, QMC5883L_INTERRUPT_DISABLE);
 
+    // initialize BMP280 sensor
+    bmp.i2c_addr = BMP_I2C_ADDRESS_1;
+    bmp.sda_pin = imu_conf.sda_pin;
+    bmp.scl_pin = imu_conf.scl_pin;
+    bmp.i2c_freq = imu_conf.i2c_freq;
+    bmp280_init(bmp, BMP280_ULTRA_HIGH_RES);
+
     // initialize MPU6050 sensor
     mpu = mpu6050_create(imu_conf.i2c_num, MPU6050_I2C_ADDRESS);
     if (mpu == NULL)
@@ -403,12 +422,12 @@ void imu_init(imu_i2c_conf_t imu_conf)
 
     if (xSemaphoreTake(mutex, portMAX_DELAY) == pdTRUE)
     {
-        euler.acce_roll = 0.0f;
-        euler.acce_pitch = 0.0f;
-        euler.mag_yaw = 0.0f;
-        euler.gyro_roll = 0.0f;
-        euler.gyro_pitch = 0.0f;
-        euler.gyro_yaw = 0.0f;
+        static_kalman_data.acce_roll = 0.0f;
+        static_kalman_data.acce_pitch = 0.0f;
+        static_kalman_data.mag_yaw = 0.0f;
+        static_kalman_data.gyro_roll = 0.0f;
+        static_kalman_data.gyro_pitch = 0.0f;
+        static_kalman_data.gyro_yaw = 0.0f;
 
         xSemaphoreGive(mutex);
     }
@@ -417,7 +436,7 @@ void imu_init(imu_i2c_conf_t imu_conf)
         ESP_LOGE(TAG, "Failed to take mutex to init");
     }
 
-    xTaskCreate(kalman_euler_angle_read, "kalman euler angle read", 4096, NULL, 10, NULL);
+    xTaskCreate(kalman_data_read, "kalman filter", 4096, NULL, 10, NULL);
 }
 
 
@@ -427,8 +446,9 @@ void imu_init(imu_i2c_conf_t imu_conf)
  * @param acce acce data
  * @param gyro gyro data
  * @param mag magnetometer data
+ * @param pres_h pressure sensor height data
 */
-void imu_get_data(mpu6050_acce_value_t* acce, mpu6050_gyro_value_t* gyro, magnetometer_raw_t* mag)
+void imu_get_data(mpu6050_acce_value_t* acce, mpu6050_gyro_value_t* gyro, magnetometer_raw_t* mag, float* pres_h)
 {
     ESP_ERROR_CHECK(mpu6050_get_acce(mpu, acce));
     ESP_ERROR_CHECK(mpu6050_get_gyro(mpu, gyro));
@@ -445,25 +465,32 @@ void imu_get_data(mpu6050_acce_value_t* acce, mpu6050_gyro_value_t* gyro, magnet
     mag->x = y;  // MPU6050 OX axis is QMC OY axis
     mag->y = -x; // MPU6050 OY axis is QMC -OX axis
     mag->z = z;  // MPU6050 OZ axis is QMC OZ axis
+
+    double height;
+    bmp280_read_height(bmp, &height);
+
+    *pres_h = (float)height;
 }
 
 
 /**
- * @brief get euler angle after kalman filter
+ * @brief get data from kalman filter
  * 
- * @param euler_angle euler angle
+ * @param kalman_data kalman data
 */
-void imu_get_euler_angle(kalman_euler_angle_t* euler_angle)
+void imu_get_kalman_data(kalman_data_t* kalman_data)
 {
     if (xSemaphoreTake(mutex, 0) == pdTRUE)
     {
-        euler_angle->acce_roll = euler.acce_roll;
-        euler_angle->acce_pitch = euler.acce_pitch;
-        euler_angle->mag_yaw = euler.mag_yaw;
+        kalman_data->acce_roll = static_kalman_data.acce_roll;
+        kalman_data->acce_pitch = static_kalman_data.acce_pitch;
+        kalman_data->mag_yaw = static_kalman_data.mag_yaw;
 
-        euler_angle->gyro_roll = euler.gyro_roll;
-        euler_angle->gyro_pitch = euler.gyro_pitch;
-        euler_angle->gyro_yaw = euler.gyro_yaw;
+        kalman_data->gyro_roll = static_kalman_data.gyro_roll;
+        kalman_data->gyro_pitch = static_kalman_data.gyro_pitch;
+        kalman_data->gyro_yaw = static_kalman_data.gyro_yaw;
+
+        kalman_data->pres_height = static_kalman_data.pres_height;
 
         xSemaphoreGive(mutex);
     }

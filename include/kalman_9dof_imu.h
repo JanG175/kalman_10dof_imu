@@ -1,3 +1,11 @@
+/**
+ * @file kalman_9dof_imu.h
+ * @author JanG175
+ * @brief 9DOF IMU sensor made from sensor fusion of MPU6050 accelerometer and gyroscope and QMC5883L magnetometer
+ * 
+ * @copyright Apache 2.0
+*/
+
 #include <stdio.h>
 #include <math.h>
 #include "freertos/FreeRTOS.h"
@@ -6,10 +14,11 @@
 #include "driver/i2c.h"
 #include "mpu6050.h"
 #include "esp_qmc5883l.h"
+#include "esp_bmp280.h"
 #include "esp_matrix.h"
 #include "esp_log.h"
 
-#define DT             2   // integration step in ms
+#define DT             4   // integration step in ms
 
 #define STD_DEV_V      0.01 // process noise
 #define STD_DEV_W      0.02 // sensor noise
@@ -42,14 +51,17 @@ typedef struct
     float acce_roll;
     float acce_pitch;
     float mag_yaw;
+
     float gyro_roll;
     float gyro_pitch;
     float gyro_yaw;
-} kalman_euler_angle_t;
+
+    float pres_height;
+} kalman_data_t;
 
 
 void imu_init(imu_i2c_conf_t mpu_conf);
 
-void imu_get_data(mpu6050_acce_value_t* acce, mpu6050_gyro_value_t* gyro, magnetometer_raw_t* mag);
+void imu_get_data(mpu6050_acce_value_t* acce, mpu6050_gyro_value_t* gyro, magnetometer_raw_t* mag, float* pres_h);
 
-void imu_get_euler_angle(kalman_euler_angle_t* euler_angle);
+void imu_get_kalman_data(kalman_data_t* kalman_data);
