@@ -17,13 +17,24 @@ static bmp280_conf_t bmp;
 static SemaphoreHandle_t mutex = NULL;
 static kalman_data_t static_kalman_data;
 
-static float calculate_z_accel(mpu6050_acce_value_t* acce_data)
-{
-    float x = acce_data->acce_x;
-    float y = acce_data->acce_y;
-    float z = acce_data->acce_z;
 
-    return sqrtf(x * x + y * y + z * z);
+/**
+ * @brief calculate z acceleration from accelerometer data
+ * 
+ * @param acce_data accelerometer data
+ * @param kalman_data kalman data
+*/
+static float calculate_z_accel(mpu6050_acce_value_t* acce_data, kalman_data_t* kalman_data)
+{
+    float roll = kalman_data->gyro_roll * M_PI / 180.0f;
+    float pitch = -kalman_data->gyro_pitch * M_PI / 180.0f; // minus caused by MPU6050 mounted backwards
+
+    float a_z = acce_data->acce_z*cosf(pitch)*cosf(roll) - acce_data->acce_x*sinf(pitch) + 
+                    acce_data->acce_y*cosf(pitch)*sinf(roll);
+
+    a_z = (a_z - 1.0f) * 9.81f;
+
+    return a_z;
 }
 
 
@@ -63,8 +74,6 @@ static void calculate_euler_angle_from_accel(mpu6050_acce_value_t* acce_data, ma
 static IRAM_ATTR void kalman_data_read(void* pvParameters)
 {
     double dt = (double)DT / 1000.0;
-    double std_dev_v = STD_DEV_V;
-    double std_dev_w = STD_DEV_W;
 
     // init measurement
     mpu6050_acce_value_t acce_data;
@@ -98,154 +107,172 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
 
     /*
 
-    Xpri' = A * Xpri + B * U
-      Y   = C * Xpri + D * U
+    state space model:
 
-    --    --   --     --   --   --   --  --            
-    | phi' |   | 1 -dt |   | phi |   | dt |   --     --
-    |      | = |       | * |     | + |    | * | Wgyro |
-    |  g'  |   | 0   1 |   |  g  |   |  0 |   --     --
-    --    --   --     --   --   --   --  --            
+    Xpri[k] = A * Xpri[k] + B * U[k]
+       Y[k] = C * Xpri[k] + D * U[k]
 
-                  --   --
-        --   --   | phi |
-    Y = | 1 0 | * |     |
-        --   --   |  g  |
-                  --   --
+    euler angles:
+
+    --        --   --     --   --      --   --  --            
+    | phi[k+1] |   | 1 -dt |   | phi[k] |   | dt |   --        --
+    |          | = |       | * |        | + |    | * | Wgyro[k] |
+    |  g[k+1]  |   | 0   1 |   |  g[k]  |   |  0 |   --        --
+    --        --   --     --   --      --   --  --            
+
+                     --      --
+           --   --   | phi[k] |
+    Y[k] = | 1 0 | * |        |
+           --   --   |  g[k]  |
+                     --      --
+
+    height:
+
+    --    --   --    --   --    --   --        --
+    | h[k] |   | 1 dt |   | h[k] |   | 0.5*dt^2 |   --     --
+    |      | = |      | * |      | + |          | * | Az[k] |
+    | v[k] |   | 0  1 |   | v[k] |   |     0    |   --     --
+    --    --   --    --   --    --   --        --
+
+                     --    --
+           --   --   | h[k] |
+    Y[k] = | 1 0 | * |      |
+           --   --   | v[k] |
+                     --    --
 
     */
 
     // state space model for euler angles
-    matrix_t A;
-    matrix_alloc(&A, 2, 2);
-    A.array[0][0] = 1.0;
-    A.array[0][1] = -dt;
-    A.array[1][0] = 0.0;
-    A.array[1][1] = 1.0;
+    matrix_t A_e;
+    matrix_alloc(&A_e, 2, 2);
+    A_e.array[0][0] = 1.0;
+    A_e.array[0][1] = -dt;
+    A_e.array[1][0] = 0.0;
+    A_e.array[1][1] = 1.0;
 
-    matrix_t B;
-    matrix_alloc(&B, 2, 1);
-    B.array[0][0] = dt;
-    B.array[1][0] = 0.0;
+    matrix_t B_e;
+    matrix_alloc(&B_e, 2, 1);
+    B_e.array[0][0] = dt;
+    B_e.array[1][0] = 0.0;
 
-    matrix_t C;
-    matrix_alloc(&C, 1, 2);
-    C.array[0][0] = 1.0;
-    C.array[0][1] = 0.0;
+    matrix_t C_e;
+    matrix_alloc(&C_e, 1, 2);
+    C_e.array[0][0] = 1.0;
+    C_e.array[0][1] = 0.0;
 
     // noise
-    matrix_t V;
-    matrix_alloc(&V, 2, 2);
-    V.array[0][0] = pow(std_dev_v, 2.0);
-    V.array[0][1] = 0.0;
-    V.array[1][0] = 0.0;
-    V.array[1][1] = pow(std_dev_v, 2.0);
+    matrix_t V_e;
+    matrix_alloc(&V_e, 2, 2);
+    V_e.array[0][0] = pow(STD_DEV_V, 2.0);
+    V_e.array[0][1] = 0.0;
+    V_e.array[1][0] = 0.0;
+    V_e.array[1][1] = pow(STD_DEV_V, 2.0);
 
-    matrix_t W;
-    matrix_alloc(&W, 1, 1);
-    W.array[0][0] = pow(std_dev_w, 2.0);
+    matrix_t W_e;
+    matrix_alloc(&W_e, 1, 1);
+    W_e.array[0][0] = pow(STD_DEV_W, 2.0);
 
     // initial states
-    matrix_t Xpri;
-    matrix_alloc(&Xpri, 2, 3);
-    Xpri.array[0][0] = 0.0;
-    Xpri.array[0][1] = 0.0;
-    Xpri.array[0][2] = 0.0;
-    Xpri.array[1][0] = 0.0;
-    Xpri.array[1][1] = 0.0;
-    Xpri.array[1][2] = 0.0;
+    matrix_t Xpri_e;
+    matrix_alloc(&Xpri_e, 2, 3);
+    Xpri_e.array[0][0] = 0.0;
+    Xpri_e.array[0][1] = 0.0;
+    Xpri_e.array[0][2] = 0.0;
+    Xpri_e.array[1][0] = 0.0;
+    Xpri_e.array[1][1] = 0.0;
+    Xpri_e.array[1][2] = 0.0;
 
-    matrix_t Ppri;
-    matrix_alloc(&Ppri, 2, 2);
-    Ppri.array[0][0] = 1.0;
-    Ppri.array[0][1] = 0.0;
-    Ppri.array[1][0] = 0.0;
-    Ppri.array[1][1] = 1.0;
+    matrix_t Ppri_e;
+    matrix_alloc(&Ppri_e, 2, 2);
+    Ppri_e.array[0][0] = 1.0;
+    Ppri_e.array[0][1] = 0.0;
+    Ppri_e.array[1][0] = 0.0;
+    Ppri_e.array[1][1] = 1.0;
 
-    matrix_t Xpost;
-    matrix_alloc(&Xpost, 2, 3);
-    Xpost.array[0][0] = acce_euler_angle.roll;
-    Xpost.array[0][1] = acce_euler_angle.pitch;
-    Xpost.array[0][2] = acce_euler_angle.yaw;
-    Xpost.array[1][0] = 0.0;
-    Xpost.array[1][1] = 0.0;
-    Xpost.array[1][2] = 0.0;
+    matrix_t Xpost_e;
+    matrix_alloc(&Xpost_e, 2, 3);
+    Xpost_e.array[0][0] = acce_euler_angle.roll;
+    Xpost_e.array[0][1] = acce_euler_angle.pitch;
+    Xpost_e.array[0][2] = acce_euler_angle.yaw;
+    Xpost_e.array[1][0] = 0.0;
+    Xpost_e.array[1][1] = 0.0;
+    Xpost_e.array[1][2] = 0.0;
 
-    matrix_t Ppost;
-    matrix_alloc(&Ppost, 2, 2);
-    Ppost.array[0][0] = 1.0;
-    Ppost.array[0][1] = 0.0;
-    Ppost.array[1][0] = 0.0;
-    Ppost.array[1][1] = 1.0;
+    matrix_t Ppost_e;
+    matrix_alloc(&Ppost_e, 2, 2);
+    Ppost_e.array[0][0] = 1.0;
+    Ppost_e.array[0][1] = 0.0;
+    Ppost_e.array[1][0] = 0.0;
+    Ppost_e.array[1][1] = 1.0;
 
-    matrix_t U;
-    matrix_alloc(&U, 1, 3);
-    U.array[0][0] = 0.0;
-    U.array[0][1] = 0.0;
-    U.array[0][2] = 0.0;
+    matrix_t U_e;
+    matrix_alloc(&U_e, 1, 3);
+    U_e.array[0][0] = 0.0;
+    U_e.array[0][1] = 0.0;
+    U_e.array[0][2] = 0.0;
 
-    matrix_t Y;
-    matrix_alloc(&Y, 1, 3);
-    Y.array[0][0] = 0.0;
-    Y.array[0][1] = 0.0;
-    Y.array[0][2] = 0.0;
+    matrix_t Y_e;
+    matrix_alloc(&Y_e, 1, 3);
+    Y_e.array[0][0] = 0.0;
+    Y_e.array[0][1] = 0.0;
+    Y_e.array[0][2] = 0.0;
 
-    matrix_t E;
-    matrix_alloc(&E, 1, 3);
+    matrix_t E_e;
+    matrix_alloc(&E_e, 1, 3);
 
-    matrix_t S;
-    matrix_alloc(&S, 1, 1);
+    matrix_t S_e;
+    matrix_alloc(&S_e, 1, 1);
 
-    matrix_t K;
-    matrix_alloc(&K, 2, 1);
+    matrix_t K_e;
+    matrix_alloc(&K_e, 2, 1);
 
     // auxilary matrices
-    matrix_t AXpost;
-    matrix_alloc(&AXpost, A.rows, Xpost.cols);
+    matrix_t AXpost_e;
+    matrix_alloc(&AXpost_e, A_e.rows, Xpost_e.cols);
 
-    matrix_t BU;
-    matrix_alloc(&BU, B.rows, U.cols);
+    matrix_t BU_e;
+    matrix_alloc(&BU_e, B_e.rows, U_e.cols);
 
-    matrix_t APpost;
-    matrix_alloc(&APpost, A.rows, Ppost.cols);
+    matrix_t APpost_e;
+    matrix_alloc(&APpost_e, A_e.rows, Ppost_e.cols);
 
-    matrix_t At;
-    matrix_alloc(&At, A.cols, A.rows);
-    matrix_trans(&A, &At);
+    matrix_t At_e;
+    matrix_alloc(&At_e, A_e.cols, A_e.rows);
+    matrix_trans(&A_e, &At_e);
 
-    matrix_t APpostAt;
-    matrix_alloc(&APpostAt, APpost.rows, At.cols);
+    matrix_t APpostAt_e;
+    matrix_alloc(&APpostAt_e, APpost_e.rows, At_e.cols);
 
-    matrix_t CXpri;
-    matrix_alloc(&CXpri, C.rows, Xpri.cols);
+    matrix_t CXpri_e;
+    matrix_alloc(&CXpri_e, C_e.rows, Xpri_e.cols);
 
-    matrix_t CPpri;
-    matrix_alloc(&CPpri, C.rows, Ppri.cols);
+    matrix_t CPpri_e;
+    matrix_alloc(&CPpri_e, C_e.rows, Ppri_e.cols);
 
-    matrix_t Ct;
-    matrix_alloc(&Ct, C.cols, C.rows);
-    matrix_trans(&C, &Ct);
+    matrix_t Ct_e;
+    matrix_alloc(&Ct_e, C_e.cols, C_e.rows);
+    matrix_trans(&C_e, &Ct_e);
 
-    matrix_t CPpriCt;
-    matrix_alloc(&CPpriCt, CPpri.rows, Ct.cols);
+    matrix_t CPpriCt_e;
+    matrix_alloc(&CPpriCt_e, CPpri_e.rows, Ct_e.cols);
 
-    matrix_t Sinv;
-    matrix_alloc(&Sinv, S.rows, S.cols);
+    matrix_t Sinv_e;
+    matrix_alloc(&Sinv_e, S_e.rows, S_e.cols);
 
-    matrix_t PpriCt;
-    matrix_alloc(&PpriCt, Ppri.rows, Ct.cols);
+    matrix_t PpriCt_e;
+    matrix_alloc(&PpriCt_e, Ppri_e.rows, Ct_e.cols);
 
-    matrix_t KE;
-    matrix_alloc(&KE, K.rows, E.cols);
+    matrix_t KE_e;
+    matrix_alloc(&KE_e, K_e.rows, E_e.cols);
 
-    matrix_t KS;
-    matrix_alloc(&KS, K.rows, S.cols);
+    matrix_t KS_e;
+    matrix_alloc(&KS_e, K_e.rows, S_e.cols);
 
-    matrix_t Kt;
-    matrix_alloc(&Kt, K.cols, K.rows);
+    matrix_t Kt_e;
+    matrix_alloc(&Kt_e, K_e.cols, K_e.rows);
 
-    matrix_t KSKt;
-    matrix_alloc(&KSKt, KS.rows, Kt.cols);
+    matrix_t KSKt_e;
+    matrix_alloc(&KSKt_e, KS_e.rows, Kt_e.cols);
 
     // state space model for height
     matrix_t A_h;
@@ -257,7 +284,7 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
 
     matrix_t B_h;
     matrix_alloc(&B_h, 2, 1);
-    B_h.array[0][0] = 0.5*dt*dt;
+    B_h.array[0][0] = 0.5*pow(dt, 2.0);
     B_h.array[1][0] = dt;
 
     matrix_t C_h;
@@ -268,14 +295,14 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
     // noise
     matrix_t V_h;
     matrix_alloc(&V_h, 2, 2);
-    V_h.array[0][0] = pow(std_dev_v, 2.0);
+    V_h.array[0][0] = pow(STD_DEV_V_H, 2.0);
     V_h.array[0][1] = 0.0;
     V_h.array[1][0] = 0.0;
-    V_h.array[1][1] = pow(std_dev_v, 2.0);
+    V_h.array[1][1] = pow(STD_DEV_V_H, 2.0);
 
     matrix_t W_h;
     matrix_alloc(&W_h, 1, 1);
-    W_h.array[0][0] = pow(std_dev_w, 2.0);
+    W_h.array[0][0] = pow(STD_DEV_W_H, 2.0);
 
     // initial states
     matrix_t Xpri_h;
@@ -382,54 +409,63 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
 
         calculate_euler_angle_from_accel(&acce_data, &mag_data, &acce_euler_angle);
 
-        U.array[0][0] = gyro_data.gyro_x;
-        U.array[0][1] = gyro_data.gyro_y;
-        U.array[0][2] = gyro_data.gyro_z;
+        U_e.array[0][0] = gyro_data.gyro_x;
+        U_e.array[0][1] = gyro_data.gyro_y;
+        U_e.array[0][2] = gyro_data.gyro_z;
 
-        Y.array[0][0] = acce_euler_angle.roll;
-        Y.array[0][1] = acce_euler_angle.pitch;
-        Y.array[0][2] = acce_euler_angle.yaw;
-
-        U_h.array[0][0] = calculate_z_accel(&acce_data);
-        Y_h.array[0][0] = pres_h_data;
+        Y_e.array[0][0] = acce_euler_angle.roll;
+        Y_e.array[0][1] = acce_euler_angle.pitch;
+        Y_e.array[0][2] = acce_euler_angle.yaw;
 
         // euler angles kalman
 
-        // Xpri
-        matrix_mul(&A, &Xpost, &AXpost);
-        matrix_mul(&B, &U, &BU);
-        matrix_add(&AXpost, &BU, &Xpri);
+        // Xpri_e
+        matrix_mul(&A_e, &Xpost_e, &AXpost_e);
+        matrix_mul(&B_e, &U_e, &BU_e);
+        matrix_add(&AXpost_e, &BU_e, &Xpri_e);
 
-        // Ppri
-        matrix_mul(&A, &Ppost, &APpost);
-        matrix_mul(&APpost, &At, &APpostAt);
-        matrix_add(&APpostAt, &V, &Ppri);
+        // Ppri_e
+        matrix_mul(&A_e, &Ppost_e, &APpost_e);
+        matrix_mul(&APpost_e, &At_e, &APpostAt_e);
+        matrix_add(&APpostAt_e, &V_e, &Ppri_e);
 
-        // E
-        matrix_mul(&C, &Xpri, &CXpri);
-        matrix_sub(&Y, &CXpri, &E);
+        // E_e
+        matrix_mul(&C_e, &Xpri_e, &CXpri_e);
+        matrix_sub(&Y_e, &CXpri_e, &E_e);
 
-        // S
-        matrix_mul(&C, &Ppri, &CPpri);
-        matrix_mul(&CPpri, &Ct, &CPpriCt);
-        matrix_add(&CPpriCt, &W, &S);
+        // S_e
+        matrix_mul(&C_e, &Ppri_e, &CPpri_e);
+        matrix_mul(&CPpri_e, &Ct_e, &CPpriCt_e);
+        matrix_add(&CPpriCt_e, &W_e, &S_e);
 
-        // K
-        matrix_inv(&S, &Sinv);
-        matrix_mul(&Ppri, &Ct, &PpriCt);
-        matrix_mul(&PpriCt, &Sinv, &K);
+        // K_e
+        matrix_inv(&S_e, &Sinv_e);
+        matrix_mul(&Ppri_e, &Ct_e, &PpriCt_e);
+        matrix_mul(&PpriCt_e, &Sinv_e, &K_e);
 
-        // Xpost
-        matrix_mul(&K, &E, &KE);
-        matrix_add(&Xpri, &KE, &Xpost);
+        // Xpost_e
+        matrix_mul(&K_e, &E_e, &KE_e);
+        matrix_add(&Xpri_e, &KE_e, &Xpost_e);
 
-        // Ppost
-        matrix_mul(&K, &S, &KS);
-        matrix_trans(&K, &Kt);
-        matrix_mul(&KS, &Kt, &KSKt);
-        matrix_sub(&Ppri, &KSKt, &Ppost);
+        // Ppost_e
+        matrix_mul(&K_e, &S_e, &KS_e);
+        matrix_trans(&K_e, &Kt_e);
+        matrix_mul(&KS_e, &Kt_e, &KSKt_e);
+        matrix_sub(&Ppri_e, &KSKt_e, &Ppost_e);
+
+        // calculate euler angle from gyro
+        task_kalman_data.acce_roll = Xpost_e.array[0][0];
+        task_kalman_data.acce_pitch = Xpost_e.array[0][1];
+        task_kalman_data.mag_yaw = Xpost_e.array[0][2];
+
+        task_kalman_data.gyro_roll += (gyro_data.gyro_x - Xpost_e.array[1][0]) * dt;
+        task_kalman_data.gyro_pitch += (gyro_data.gyro_y - Xpost_e.array[1][1]) * dt;
+        task_kalman_data.gyro_yaw += (gyro_data.gyro_z - Xpost_e.array[1][2]) * dt;
 
         // height kalman
+
+        U_h.array[0][0] = calculate_z_accel(&acce_data, &task_kalman_data);
+        Y_h.array[0][0] = pres_h_data;
 
         // Xpri_h
         matrix_mul(&A_h, &Xpost_h, &AXpost_h);
@@ -465,15 +501,7 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
         matrix_mul(&KS_h, &Kt_h, &KSKt_h);
         matrix_sub(&Ppri_h, &KSKt_h, &Ppost_h);
 
-        // calculate euler angle from gyro
-        task_kalman_data.acce_roll = Xpost.array[0][0];
-        task_kalman_data.acce_pitch = Xpost.array[0][1];
-        task_kalman_data.mag_yaw = Xpost.array[0][2];
-
-        task_kalman_data.gyro_roll += (gyro_data.gyro_x - Xpost.array[1][0]) * dt;
-        task_kalman_data.gyro_pitch += (gyro_data.gyro_y - Xpost.array[1][1]) * dt;
-        task_kalman_data.gyro_yaw += (gyro_data.gyro_z - Xpost.array[1][2]) * dt;
-
+        // update height
         task_kalman_data.pres_height = Xpost_h.array[0][0];
 
         // calculate time left to wait
@@ -504,35 +532,35 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
     }
 
     // deallocate memory
-    matrix_dealloc(&A);
-    matrix_dealloc(&B);
-    matrix_dealloc(&C);
-    matrix_dealloc(&V);
-    matrix_dealloc(&W);
-    matrix_dealloc(&E);
-    matrix_dealloc(&S);
-    matrix_dealloc(&K);
-    matrix_dealloc(&U);
-    matrix_dealloc(&Y);
-    matrix_dealloc(&Xpri);
-    matrix_dealloc(&Ppri);
-    matrix_dealloc(&Xpost);
-    matrix_dealloc(&Ppost);
-    matrix_dealloc(&AXpost);
-    matrix_dealloc(&BU);
-    matrix_dealloc(&APpost);
-    matrix_dealloc(&At);
-    matrix_dealloc(&APpostAt);
-    matrix_dealloc(&CXpri);
-    matrix_dealloc(&CPpri);
-    matrix_dealloc(&Ct);
-    matrix_dealloc(&CPpriCt);
-    matrix_dealloc(&Sinv);
-    matrix_dealloc(&PpriCt);
-    matrix_dealloc(&KE);
-    matrix_dealloc(&KS);
-    matrix_dealloc(&Kt);
-    matrix_dealloc(&KSKt);
+    matrix_dealloc(&A_e);
+    matrix_dealloc(&B_e);
+    matrix_dealloc(&C_e);
+    matrix_dealloc(&V_e);
+    matrix_dealloc(&W_e);
+    matrix_dealloc(&E_e);
+    matrix_dealloc(&S_e);
+    matrix_dealloc(&K_e);
+    matrix_dealloc(&U_e);
+    matrix_dealloc(&Y_e);
+    matrix_dealloc(&Xpri_e);
+    matrix_dealloc(&Ppri_e);
+    matrix_dealloc(&Xpost_e);
+    matrix_dealloc(&Ppost_e);
+    matrix_dealloc(&AXpost_e);
+    matrix_dealloc(&BU_e);
+    matrix_dealloc(&APpost_e);
+    matrix_dealloc(&At_e);
+    matrix_dealloc(&APpostAt_e);
+    matrix_dealloc(&CXpri_e);
+    matrix_dealloc(&CPpri_e);
+    matrix_dealloc(&Ct_e);
+    matrix_dealloc(&CPpriCt_e);
+    matrix_dealloc(&Sinv_e);
+    matrix_dealloc(&PpriCt_e);
+    matrix_dealloc(&KE_e);
+    matrix_dealloc(&KS_e);
+    matrix_dealloc(&Kt_e);
+    matrix_dealloc(&KSKt_e);
 
     matrix_dealloc(&A_h);
     matrix_dealloc(&B_h);

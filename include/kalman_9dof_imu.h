@@ -18,11 +18,15 @@
 #include "esp_matrix.h"
 #include "esp_log.h"
 
-#define DT             4   // integration step in ms
+#define DT             4    // integration step in ms
 
+// euler angles kalman filter
 #define STD_DEV_V      0.01 // process noise
 #define STD_DEV_W      0.02 // sensor noise
 
+// height kalman filter
+#define STD_DEV_V_H    0.01 // process noise
+#define STD_DEV_W_H    0.1  // sensor noise
 
 typedef struct
 {
