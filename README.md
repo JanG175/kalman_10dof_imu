@@ -1,4 +1,4 @@
-# ESP-IDF component for 9DOF IMU with Kalman filter
+# ESP-IDF component for 10DOF IMU with Kalman filter
 9DOF IMU sensor made from sensor fusion of MPU6050 accelerometer and gyroscope, QMC5883L magnetometer and BMP280 pressure sensor.
 
 ## Notes
