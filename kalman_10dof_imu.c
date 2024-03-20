@@ -10,7 +10,7 @@
 #include <stdio.h>
 #include "kalman_10dof_imu.h"
 
-static const char* TAG = "kalman_9_dof_imu";
+static const char* TAG = "kalman_10_dof_imu";
 static mpu6050_handle_t mpu;
 static qmc5883l_conf_t qmc;
 static bmp280_conf_t bmp;
