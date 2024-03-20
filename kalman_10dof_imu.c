@@ -1,14 +1,14 @@
 /**
- * @file kalman_9dof_imu.c
+ * @file kalman_10dof_imu.c
  * @author JanG175
- * @brief 9DOF IMU sensor made from sensor fusion of MPU6050 accelerometer and gyroscope, QMC5883L magnetometer
+ * @brief 10 DOF IMU sensor made from sensor fusion of MPU6050 accelerometer and gyroscope, QMC5883L magnetometer
  * and BMP280 pressure sensor
  * 
  * @copyright Apache 2.0
 */
 
 #include <stdio.h>
-#include "kalman_9dof_imu.h"
+#include "kalman_10dof_imu.h"
 
 static const char* TAG = "kalman_9_dof_imu";
 static mpu6050_handle_t mpu;

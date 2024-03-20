@@ -1,7 +1,7 @@
 /**
- * @file kalman_9dof_imu.h
+ * @file kalman_10dof_imu.h
  * @author JanG175
- * @brief 9DOF IMU sensor made from sensor fusion of MPU6050 accelerometer and gyroscope, QMC5883L magnetometer
+ * @brief 10 DOF IMU sensor made from sensor fusion of MPU6050 accelerometer and gyroscope, QMC5883L magnetometer
  * and BMP280 pressure sensor
  * 
  * @copyright Apache 2.0
