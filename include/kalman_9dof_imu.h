@@ -1,7 +1,8 @@
 /**
  * @file kalman_9dof_imu.h
  * @author JanG175
- * @brief 9DOF IMU sensor made from sensor fusion of MPU6050 accelerometer and gyroscope and QMC5883L magnetometer
+ * @brief 9DOF IMU sensor made from sensor fusion of MPU6050 accelerometer and gyroscope, QMC5883L magnetometer
+ * and BMP280 pressure sensor
  * 
  * @copyright Apache 2.0
 */
@@ -18,15 +19,15 @@
 #include "esp_matrix.h"
 #include "esp_log.h"
 
-#define DT             4    // integration step in ms
+#define DT                4 // integration step in ms
 
 // euler angles kalman filter
-#define STD_DEV_V      0.01 // process noise
-#define STD_DEV_W      0.02 // sensor noise
+#define STD_DEV_V_E    0.01 // process noise
+#define STD_DEV_W_E    0.02 // sensor noise
 
 // height kalman filter
 #define STD_DEV_V_H    0.01 // process noise
-#define STD_DEV_W_H    0.1  // sensor noise
+#define STD_DEV_W_H     0.1 // sensor noise
 
 typedef struct
 {

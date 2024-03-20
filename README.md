@@ -1,9 +1,8 @@
 # ESP-IDF component for 9DOF IMU with Kalman filter
-9DOF IMU sensor made from sensor fusion of MPU6050 accelerometer and gyroscope and QMC5883L magnetometer.
+9DOF IMU sensor made from sensor fusion of MPU6050 accelerometer and gyroscope, QMC5883L magnetometer and BMP280 pressure sensor.
 
 ## Notes
-* Adjust Kalman filter with macros: `STD_DEV_V` and `STD_DEV_W` in `kalman_mpu6050.h`.
-* Make sure to comment out `#define QMC5883L_I2C_INIT            1 // uncomment to initialize I2C driver` in `esp_qmc5883l.h`.
+* Adjust Kalman filter with macros: `STD_DEV_V_E`/`STD_DEV_V_H` and `STD_DEV_W_E`/`STD_DEV_W_H` in `kalman_mpu6050.h`.
 * Make sure to comment out `// #define BMP280_I2C_INIT   1 // uncomment to initialize I2C driver` in `esp_bmp280.h`.
 * This component requires `mpu6050`, `esp_qmc5883l`, `esp_bmp280` and `esp_matrix` components to work.
 * Check `imu_get_data()` and `calculate_euler_angle_from_accel` functions for proper MPU6050 and QMC5883L mounting and edit them if needed.
@@ -66,6 +65,10 @@ void app_main(void)
         printf("%f\n", euler_angle.gyro_pitch);
         printf(">kalman_gyro_yaw:");
         printf("%f\n", euler_angle.gyro_yaw);
+        printf(">kalman_pres_height:");
+        printf("%f\n", kalman_data.pres_height);
+        printf(">kalman_height:");
+        printf("%f\n", kalman_data.height);
 
         vTaskDelay(10 / portTICK_PERIOD_MS);
     }

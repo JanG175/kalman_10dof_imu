@@ -1,7 +1,8 @@
 /**
  * @file kalman_9dof_imu.c
  * @author JanG175
- * @brief 9DOF IMU sensor made from sensor fusion of MPU6050 accelerometer and gyroscope and QMC5883L magnetometer
+ * @brief 9DOF IMU sensor made from sensor fusion of MPU6050 accelerometer and gyroscope, QMC5883L magnetometer
+ * and BMP280 pressure sensor
  * 
  * @copyright Apache 2.0
 */
@@ -163,14 +164,14 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
     // noise
     matrix_t V_e;
     matrix_alloc(&V_e, 2, 2);
-    V_e.array[0][0] = pow(STD_DEV_V, 2.0);
+    V_e.array[0][0] = pow(STD_DEV_V_E, 2.0);
     V_e.array[0][1] = 0.0;
     V_e.array[1][0] = 0.0;
-    V_e.array[1][1] = pow(STD_DEV_V, 2.0);
+    V_e.array[1][1] = pow(STD_DEV_V_E, 2.0);
 
     matrix_t W_e;
     matrix_alloc(&W_e, 1, 1);
-    W_e.array[0][0] = pow(STD_DEV_W, 2.0);
+    W_e.array[0][0] = pow(STD_DEV_W_E, 2.0);
 
     // initial states
     matrix_t Xpri_e;
