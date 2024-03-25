@@ -1,8 +1,8 @@
 /**
  * @file kalman_10dof_imu.h
  * @author JanG175
- * @brief 10 DOF IMU sensor made from sensor fusion of MPU6050 accelerometer and gyroscope, QMC5883L magnetometer,
- * VL53L0X distance sensor and BMP280 pressure sensor
+ * @brief 10 DOF IMU sensor made from sensor fusion of MPU6050 accelerometer and gyroscope, QMC5883L magnetometer
+ * and BMP280 pressure sensor
  * 
  * @copyright Apache 2.0
 */
@@ -16,11 +16,10 @@
 #include "mpu6050.h"
 #include "esp_qmc5883l.h"
 #include "esp_bmp280.h"
-#include "vl53l0x.h"
 #include "esp_matrix.h"
 #include "esp_log.h"
 
-#define DT               30 // integration step in ms
+#define DT                4 // integration step in ms
 
 // euler angles kalman filter
 #define STD_DEV_V_E    0.01 // process noise
