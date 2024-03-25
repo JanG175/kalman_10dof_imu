@@ -1,8 +1,8 @@
 /**
  * @file kalman_10dof_imu.h
  * @author JanG175
- * @brief 10 DOF IMU sensor made from sensor fusion of MPU6050 accelerometer and gyroscope, QMC5883L magnetometer
- * and BMP280 pressure sensor
+ * @brief 10 DOF IMU sensor made from sensor fusion of MPU6050 accelerometer and gyroscope, QMC5883L magnetometer,
+ * VL53L0X distance sensor and BMP280 pressure sensor
  * 
  * @copyright Apache 2.0
 */
@@ -16,10 +16,11 @@
 #include "mpu6050.h"
 #include "esp_qmc5883l.h"
 #include "esp_bmp280.h"
+#include "vl53l0x.h"
 #include "esp_matrix.h"
 #include "esp_log.h"
 
-#define DT                4 // integration step in ms
+#define DT               30 // integration step in ms
 
 // euler angles kalman filter
 #define STD_DEV_V_E    0.01 // process noise
@@ -61,13 +62,13 @@ typedef struct
     float gyro_pitch;
     float gyro_yaw;
 
-    float pres_height;
+    float raw_height;
     float height;
 } kalman_data_t;
 
 
-void imu_init(imu_i2c_conf_t mpu_conf);
+void imu_init(imu_i2c_conf_t imu_conf);
 
-void imu_get_data(mpu6050_acce_value_t* acce, mpu6050_gyro_value_t* gyro, magnetometer_raw_t* mag, float* pres_h);
+void imu_get_data(mpu6050_acce_value_t* acce, mpu6050_gyro_value_t* gyro, magnetometer_raw_t* mag, float* height);
 
 void imu_get_kalman_data(kalman_data_t* kalman_data);

@@ -1,8 +1,8 @@
 /**
  * @file kalman_10dof_imu.c
  * @author JanG175
- * @brief 10 DOF IMU sensor made from sensor fusion of MPU6050 accelerometer and gyroscope, QMC5883L magnetometer
- * and BMP280 pressure sensor
+ * @brief 10 DOF IMU sensor made from sensor fusion of MPU6050 accelerometer and gyroscope, QMC5883L magnetometer,
+ * VL53L0X distance sensor and BMP280 pressure sensor
  * 
  * @copyright Apache 2.0
 */
@@ -14,6 +14,9 @@ static const char* TAG = "kalman_10_dof_imu";
 static mpu6050_handle_t mpu;
 static qmc5883l_conf_t qmc;
 static bmp280_conf_t bmp;
+static vl53l0x_conf_t vl53l0x;
+
+static bool is_tof_in_range = false;
 
 static SemaphoreHandle_t mutex = NULL;
 static kalman_data_t static_kalman_data;
@@ -24,8 +27,9 @@ static kalman_data_t static_kalman_data;
  * 
  * @param acce_data accelerometer data
  * @param kalman_data kalman data
+ * @param h_data height data
 */
-static float calculate_z_accel(mpu6050_acce_value_t* acce_data, kalman_data_t* kalman_data)
+static float calculate_z_accel(mpu6050_acce_value_t* acce_data, kalman_data_t* kalman_data, float* h_data)
 {
     float roll = kalman_data->gyro_roll * M_PI / 180.0f;
     float pitch = -kalman_data->gyro_pitch * M_PI / 180.0f; // minus caused by MPU6050 mounted backwards
@@ -34,6 +38,15 @@ static float calculate_z_accel(mpu6050_acce_value_t* acce_data, kalman_data_t* k
                     acce_data->acce_y*cosf(pitch)*sinf(roll);
 
     a_z = (a_z - 1.0f) * 9.81f;
+
+    // compensate tilt
+    if (is_tof_in_range == true)
+    {
+        float h_comp = fabs(*h_data) / sqrt(1.0f + pow(tan(roll), 2.0) + pow(tan(pitch), 2.0));
+    
+        if (h_comp != 0.0f && isnan(h_comp) == 0)
+            *h_data = h_comp;
+    }
 
     return a_z;
 }
@@ -80,9 +93,9 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
     mpu6050_acce_value_t acce_data;
     mpu6050_gyro_value_t gyro_data;
     magnetometer_raw_t mag_data;
-    float pres_h_data;
+    float h_data;
 
-    imu_get_data(&acce_data, &gyro_data, &mag_data, &pres_h_data);
+    imu_get_data(&acce_data, &gyro_data, &mag_data, &h_data);
 
     kalman_data_t task_kalman_data;
     euler_angle_t acce_euler_angle;
@@ -320,7 +333,7 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
 
     matrix_t Xpost_h;
     matrix_alloc(&Xpost_h, 2, 1);
-    Xpost_h.array[0][0] = pres_h_data;
+    Xpost_h.array[0][0] = h_data;
     Xpost_h.array[1][0] = 0.0;
 
     matrix_t Ppost_h;
@@ -406,7 +419,7 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
         last_time = xTaskGetTickCount();
 
         // new measurement
-        imu_get_data(&acce_data, &gyro_data, &mag_data, &pres_h_data);
+        imu_get_data(&acce_data, &gyro_data, &mag_data, &h_data);
 
         calculate_euler_angle_from_accel(&acce_data, &mag_data, &acce_euler_angle);
 
@@ -465,8 +478,8 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
 
         // height kalman
 
-        U_h.array[0][0] = calculate_z_accel(&acce_data, &task_kalman_data);
-        Y_h.array[0][0] = pres_h_data;
+        U_h.array[0][0] = calculate_z_accel(&acce_data, &task_kalman_data, &h_data);
+        Y_h.array[0][0] = h_data;
 
         // Xpri_h
         matrix_mul(&A_h, &Xpost_h, &AXpost_h);
@@ -503,7 +516,7 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
         matrix_sub(&Ppri_h, &KSKt_h, &Ppost_h);
 
         // update height
-        task_kalman_data.pres_height = Xpost_h.array[0][0];
+        task_kalman_data.height = Xpost_h.array[0][0];
 
         // calculate time left to wait
         time = xTaskGetTickCount();
@@ -519,8 +532,8 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
             static_kalman_data.gyro_pitch = task_kalman_data.gyro_pitch;
             static_kalman_data.gyro_yaw = task_kalman_data.gyro_yaw;
 
-            static_kalman_data.pres_height = pres_h_data;
-            static_kalman_data.height = task_kalman_data.pres_height;
+            static_kalman_data.raw_height = h_data;
+            static_kalman_data.height = task_kalman_data.height;
 
             xSemaphoreGive(mutex);
 
@@ -600,7 +613,7 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
 /**
  * @brief initialize imu sensor
  * 
- * @param mpu_conf imu I2C configuration
+ * @param imu_conf imu I2C configuration
 */
 void imu_init(imu_i2c_conf_t imu_conf)
 {
@@ -637,11 +650,22 @@ void imu_init(imu_i2c_conf_t imu_conf)
                         QMC5883L_POINTER_ROLLOVER_FUNCTION_NORMAL, QMC5883L_INTERRUPT_DISABLE);
 
     // initialize BMP280 sensor
+    bmp.i2c_port = imu_conf.i2c_num;
     bmp.i2c_addr = BMP_I2C_ADDRESS_1;
     bmp.sda_pin = imu_conf.sda_pin;
     bmp.scl_pin = imu_conf.scl_pin;
     bmp.i2c_freq = imu_conf.i2c_freq;
     bmp280_init(bmp, BMP280_ULTRA_HIGH_RES);
+
+    // initialize VL53L0X sensor
+    vl53l0x.i2c_port = imu_conf.i2c_num;
+    vl53l0x.sda_pin = imu_conf.sda_pin;
+    vl53l0x.scl_pin = imu_conf.scl_pin;
+    vl53l0x.i2c_freq = imu_conf.i2c_freq;
+    vl53l0x.gpio1_pin = -1;
+    vl53l0x.xshut_pin = -1;
+    vl53l0x_init(vl53l0x);
+    vl53l0x_set_timing_budget(20000);
 
     // initialize MPU6050 sensor
     mpu = mpu6050_create(imu_conf.i2c_num, MPU6050_I2C_ADDRESS);
@@ -662,7 +686,7 @@ void imu_init(imu_i2c_conf_t imu_conf)
         static_kalman_data.gyro_pitch = 0.0f;
         static_kalman_data.gyro_yaw = 0.0f;
 
-        static_kalman_data.pres_height = 0.0f;
+        static_kalman_data.raw_height = 0.0f;
         static_kalman_data.height = 0.0f;
 
         xSemaphoreGive(mutex);
@@ -677,14 +701,14 @@ void imu_init(imu_i2c_conf_t imu_conf)
 
 
 /**
- * @brief get data from imu sensor
+ * @brief get data from sensors
  * 
  * @param acce acce data
  * @param gyro gyro data
  * @param mag magnetometer data
- * @param pres_h pressure sensor height data
+ * @param height height data
 */
-void imu_get_data(mpu6050_acce_value_t* acce, mpu6050_gyro_value_t* gyro, magnetometer_raw_t* mag, float* pres_h)
+void imu_get_data(mpu6050_acce_value_t* acce, mpu6050_gyro_value_t* gyro, magnetometer_raw_t* mag, float* height)
 {
     ESP_ERROR_CHECK(mpu6050_get_acce(mpu, acce));
     ESP_ERROR_CHECK(mpu6050_get_gyro(mpu, gyro));
@@ -702,10 +726,20 @@ void imu_get_data(mpu6050_acce_value_t* acce, mpu6050_gyro_value_t* gyro, magnet
     mag->y = -x; // MPU6050 OY axis is QMC -OX axis
     mag->z = z;  // MPU6050 OZ axis is QMC OZ axis
 
-    double height;
-    bmp280_read_height(bmp, &height);
+    uint16_t height_mm = 0;
+    is_tof_in_range = vl53l0x_read(vl53l0x, &height_mm);
 
-    *pres_h = (float)height;
+    if (is_tof_in_range == true)
+    {
+        *height = (float)height_mm / 1000.0f;
+    }
+    else
+    {
+        double pres_height = 0.0;
+        bmp280_read_height(bmp, &pres_height);
+
+        *height = (float)pres_height;
+    }
 }
 
 
@@ -726,7 +760,7 @@ void imu_get_kalman_data(kalman_data_t* kalman_data)
         kalman_data->gyro_pitch = static_kalman_data.gyro_pitch;
         kalman_data->gyro_yaw = static_kalman_data.gyro_yaw;
 
-        kalman_data->pres_height = static_kalman_data.pres_height;
+        kalman_data->raw_height = static_kalman_data.raw_height;
         kalman_data->height = static_kalman_data.height;
 
         xSemaphoreGive(mutex);

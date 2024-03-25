@@ -3,7 +3,9 @@
 
 ## Notes
 * Adjust Kalman filter with macros: `STD_DEV_V_E`/`STD_DEV_V_H` and `STD_DEV_W_E`/`STD_DEV_W_H` in `kalman_mpu6050.h`.
-* Make sure to comment out `// #define BMP280_I2C_INIT   1 // uncomment to initialize I2C driver` in `esp_bmp280.h`.
+* Make sure to comment out `#define QMC5883L_I2C_INIT            1 // uncomment to initialize I2C driver` in `esp_qmc5883l.h`.
+* Make sure to comment out `#define BMP280_I2C_INIT   1 // uncomment to initialize I2C driver` in `esp_bmp280.h`.
+* Make sure to comment out `#define VL53L0X_I2C_INIT        1 // uncomment to initialize I2C driver` in `vl53l0x.h`.
 * This component requires `mpu6050`, `esp_qmc5883l`, `esp_bmp280` and `esp_matrix` components to work.
 * Check `imu_get_data()` and `calculate_euler_angle_from_accel` functions for proper MPU6050 and QMC5883L mounting and edit them if needed.
 
@@ -16,11 +18,16 @@
 
 ![bootloader](images/bootloader.png)
 
+* Set compiler's `Optimization Level` to `Optimize for performance (-O2)`.
+
+![compiler](images/compiler.png)
+
 ## Sources
 * https://github.com/espressif/esp-bsp/tree/8a042287f67573e757ff25f8bb6372c3fffb5313/components/mpu6050
 * https://github.com/JanG175/esp_matrix
 * https://github.com/JanG175/esp_qmc5883l
 * https://github.com/JanG175/esp_bmp280
+* https://github.com/JanG175/vl53l0x
 
 ## How 2 use?
 ```C
