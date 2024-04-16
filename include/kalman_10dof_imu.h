@@ -12,14 +12,14 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
-#include "driver/i2c.h"
-#include "mpu6050.h"
+#include "driver/i2c_master.h"
+#include "esp_mpu6050.h"
 #include "esp_qmc5883l.h"
 #include "esp_bmp280.h"
 #include "esp_matrix.h"
 #include "esp_log.h"
 
-#define DT                4 // integration step in ms
+#define DT             4 // integration step in ms
 
 // euler angles kalman filter
 #define STD_DEV_V_E    0.01 // process noise
@@ -27,11 +27,11 @@
 
 // height kalman filter
 #define STD_DEV_V_H    0.01 // process noise
-#define STD_DEV_W_H     0.1 // sensor noise
+#define STD_DEV_W_H    0.1  // sensor noise
 
 typedef struct
 {
-    i2c_port_t i2c_num;
+    i2c_port_t i2c_port;
     gpio_num_t sda_pin;
     gpio_num_t scl_pin;
     uint32_t i2c_freq;

@@ -18,6 +18,8 @@ static bmp280_conf_t bmp;
 static SemaphoreHandle_t mutex = NULL;
 static kalman_data_t static_kalman_data;
 
+i2c_master_bus_handle_t bus_handle; // I2C bus handle for all components
+
 
 /**
  * @brief calculate Z acceleration from accelerometer data
@@ -612,20 +614,18 @@ void imu_init(imu_i2c_conf_t imu_conf)
     }
 
     // initialize I2C
-    i2c_config_t conf;
-    conf.mode = I2C_MODE_MASTER;
-    conf.sda_io_num = imu_conf.sda_pin;
-    conf.sda_pullup_en = GPIO_PULLUP_ENABLE;
-    conf.scl_io_num = imu_conf.scl_pin;
-    conf.scl_pullup_en = GPIO_PULLUP_ENABLE;
-    conf.master.clk_speed = imu_conf.i2c_freq;
-    conf.clk_flags = I2C_SCLK_SRC_FLAG_FOR_NOMAL;
-
-    ESP_ERROR_CHECK(i2c_param_config(imu_conf.i2c_num, &conf));
-    ESP_ERROR_CHECK(i2c_driver_install(imu_conf.i2c_num, conf.mode, 0, 0, 0));
+    i2c_master_bus_config_t i2c_mst_config = {
+        .clk_source = I2C_CLK_SRC_DEFAULT,
+        .i2c_port = imu_conf.i2c_port,
+        .scl_io_num = imu_conf.scl_pin,
+        .sda_io_num = imu_conf.sda_pin,
+        .glitch_ignore_cnt = 7,
+        .flags.enable_internal_pullup = true
+    };
+    ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_mst_config, &bus_handle));
 
     // initialize QMC5883L sensor
-    qmc.i2c_port = imu_conf.i2c_num;
+    qmc.i2c_port = imu_conf.i2c_port;
     qmc.sda_pin = imu_conf.sda_pin;
     qmc.scl_pin = imu_conf.scl_pin;
     qmc.i2c_freq = imu_conf.i2c_freq;
@@ -637,7 +637,7 @@ void imu_init(imu_i2c_conf_t imu_conf)
                         QMC5883L_POINTER_ROLLOVER_FUNCTION_NORMAL, QMC5883L_INTERRUPT_DISABLE);
 
     // initialize BMP280 sensor
-    bmp.i2c_port = imu_conf.i2c_num;
+    bmp.i2c_port = imu_conf.i2c_port;
     bmp.i2c_addr = BMP_I2C_ADDRESS_1;
     bmp.sda_pin = imu_conf.sda_pin;
     bmp.scl_pin = imu_conf.scl_pin;
@@ -645,7 +645,7 @@ void imu_init(imu_i2c_conf_t imu_conf)
     bmp280_init(bmp, BMP280_ULTRA_HIGH_RES);
 
     // initialize MPU6050 sensor
-    mpu = mpu6050_create(imu_conf.i2c_num, MPU6050_I2C_ADDRESS);
+    mpu = mpu6050_create(imu_conf.i2c_port, MPU6050_I2C_ADDRESS, imu_conf.i2c_freq);
     if (mpu == NULL)
     {
         ESP_LOGE(TAG, "Failed to create mpu6050");
