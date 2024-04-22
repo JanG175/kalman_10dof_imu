@@ -638,7 +638,7 @@ void imu_init(imu_i2c_conf_t imu_conf)
 
     // initialize BMP280 sensor
     bmp.i2c_port = imu_conf.i2c_port;
-    bmp.i2c_addr = BMP_I2C_ADDRESS_1;
+    bmp.i2c_addr = BMP280_I2C_ADDRESS_1;
     bmp.sda_pin = imu_conf.sda_pin;
     bmp.scl_pin = imu_conf.scl_pin;
     bmp.i2c_freq = imu_conf.i2c_freq;
