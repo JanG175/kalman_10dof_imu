@@ -1,7 +1,7 @@
 /**
  * @file kalman_10dof_imu.c
  * @author JanG175
- * @brief 10 DOF IMU sensor made from sensor fusion of MPU6050 accelerometer and gyroscope, QMC5883L magnetometer
+ * @brief 10 DOF IMU sensor made from sensor fusion of MPU6050 accelerometer and gyroscope, HMC5883L magnetometer
  * and BMP280 pressure sensor
  * 
  * @copyright Apache 2.0
@@ -12,7 +12,7 @@
 
 static const char* TAG = "kalman_10_dof_imu";
 static mpu6050_handle_t mpu;
-static qmc5883l_conf_t qmc;
+static hmc5883l_conf_t hmc;
 static bmp280_conf_t bmp;
 
 static SemaphoreHandle_t mutex = NULL;
@@ -30,10 +30,10 @@ i2c_master_bus_handle_t bus_handle; // I2C bus handle for all components
 static float calculate_z_accel(mpu6050_acce_value_t* acce_data, kalman_data_t* kalman_data)
 {
     float roll = kalman_data->gyro_roll * M_PI / 180.0f;
-    float pitch = -kalman_data->gyro_pitch * M_PI / 180.0f; // minus caused by MPU6050 mounted backwards
+    float pitch = -kalman_data->gyro_pitch * M_PI / 180.0f; // minus because of right turn angles
 
-    float a_z = acce_data->acce_z*cosf(pitch)*cosf(roll) - acce_data->acce_x*sinf(pitch) + 
-                    acce_data->acce_y*cosf(pitch)*sinf(roll);
+    float a_z = acce_data->acce_z * cosf(pitch) * cosf(roll) - acce_data->acce_x * sinf(pitch) + 
+                    acce_data->acce_y * cosf(pitch) * sinf(roll);
 
     a_z = (a_z - 1.0f) * 9.81f;
 
@@ -52,7 +52,6 @@ static void calculate_euler_angle_from_accel(mpu6050_acce_value_t* acce_data, ma
                                                 euler_angle_t* euler_angle)
 {
     euler_angle->roll = atan2f(acce_data->acce_y, acce_data->acce_z);
-
     euler_angle->pitch = atan2f(acce_data->acce_x, acce_data->acce_z);
 
     float mag_x = mag_data->x * cosf(euler_angle->pitch) +
@@ -61,7 +60,7 @@ static void calculate_euler_angle_from_accel(mpu6050_acce_value_t* acce_data, ma
 
     float mag_y = mag_data->y * cosf(euler_angle->roll) - mag_data->z * sinf(euler_angle->roll);
 
-    euler_angle->yaw = atan2f(mag_y, mag_x);
+    euler_angle->yaw = -atan2f(mag_y, mag_x); // minus because of right turn angles
 
     euler_angle->roll = euler_angle->roll * 180.0f / M_PI;
     euler_angle->pitch = euler_angle->pitch * 180.0f / M_PI;
@@ -624,17 +623,26 @@ void imu_init(imu_i2c_conf_t imu_conf)
     };
     ESP_ERROR_CHECK(i2c_new_master_bus(&i2c_mst_config, &bus_handle));
 
-    // initialize QMC5883L sensor
-    qmc.i2c_port = imu_conf.i2c_port;
-    qmc.sda_pin = imu_conf.sda_pin;
-    qmc.scl_pin = imu_conf.scl_pin;
-    qmc.i2c_freq = imu_conf.i2c_freq;
-    qmc.drdy_pin = -1;
+    // initialize MPU6050 sensor
+    mpu = mpu6050_create(imu_conf.i2c_port, MPU6050_I2C_ADDRESS, imu_conf.i2c_freq);
+    if (mpu == NULL)
+    {
+        ESP_LOGE(TAG, "Failed to create mpu6050");
+        return;
+    }
+    ESP_ERROR_CHECK(mpu6050_wake_up(mpu));
+    ESP_ERROR_CHECK(mpu6050_i2c_passthrough(mpu));
 
-    qmc5883l_init(qmc);
-    qmc5883l_write_control(qmc, QMC5883L_OVER_SAMPLE_RATIO_512, QMC5883L_FULL_SCALE_8G,
-                        QMC5883L_DATA_OUTPUT_RATE_200, QMC5883L_CONTINUOUS_MODE, 
-                        QMC5883L_POINTER_ROLLOVER_FUNCTION_NORMAL, QMC5883L_INTERRUPT_DISABLE);
+    // initialize HMC5883L sensor
+    hmc.i2c_port = imu_conf.i2c_port;
+    hmc.sda_pin = imu_conf.sda_pin;
+    hmc.scl_pin = imu_conf.scl_pin;
+    hmc.i2c_freq = imu_conf.i2c_freq;
+    hmc.drdy_pin = -1;
+
+    hmc5883l_init(hmc);
+    hmc5883l_write_config(hmc, HMC5883L_OVER_SAMPLE_8, HMC5883L_DATA_OUTPUT_RATE_75_HZ, HMC5883L_MODE_NORMAL, HMC5883L_GAIN_1090);
+    hmc5883l_write_mode(hmc, HMC5883L_CONTINUOUS_MODE);
 
     // initialize BMP280 sensor
     bmp.i2c_port = imu_conf.i2c_port;
@@ -644,15 +652,6 @@ void imu_init(imu_i2c_conf_t imu_conf)
     bmp.i2c_freq = imu_conf.i2c_freq;
     bmp280_init(bmp, BMP280_ULTRA_HIGH_RES);
 
-    // initialize MPU6050 sensor
-    mpu = mpu6050_create(imu_conf.i2c_port, MPU6050_I2C_ADDRESS, imu_conf.i2c_freq);
-    if (mpu == NULL)
-    {
-        ESP_LOGE(TAG, "Failed to create mpu6050");
-        return;
-    }
-
-    ESP_ERROR_CHECK(mpu6050_wake_up(mpu));
 
     if (xSemaphoreTake(mutex, portMAX_DELAY) == pdTRUE)
     {
@@ -690,18 +689,10 @@ void imu_get_data(mpu6050_acce_value_t* acce, mpu6050_gyro_value_t* gyro, magnet
     ESP_ERROR_CHECK(mpu6050_get_acce(mpu, acce));
     ESP_ERROR_CHECK(mpu6050_get_gyro(mpu, gyro));
 
-    // MPU6050 is mounted backwards
-    acce->acce_y = -acce->acce_y;
-    gyro->gyro_x = -gyro->gyro_x;
-    gyro->gyro_y = -gyro->gyro_y;
-    gyro->gyro_z = -gyro->gyro_z;
+    // right turn angles
+    acce->acce_x = -acce->acce_x;
 
-    float x, y, z;
-    qmc5883l_read_magnetometer(qmc, &x, &y, &z);
-
-    mag->x = y;  // MPU6050 OX axis is QMC OY axis
-    mag->y = -x; // MPU6050 OY axis is QMC -OX axis
-    mag->z = z;  // MPU6050 OZ axis is QMC OZ axis
+    hmc5883l_read_magnetometer(hmc, &(mag->x), &(mag->y), &(mag->z));
 
     double pres_height = 0.0;
     bmp280_read_height(bmp, &pres_height);

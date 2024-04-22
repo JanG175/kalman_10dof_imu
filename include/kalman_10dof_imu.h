@@ -1,12 +1,11 @@
 /**
  * @file kalman_10dof_imu.h
  * @author JanG175
- * @brief 10 DOF IMU sensor made from sensor fusion of MPU6050 accelerometer and gyroscope, QMC5883L magnetometer
+ * @brief 10 DOF IMU sensor made from sensor fusion of MPU6050 accelerometer and gyroscope, HMC5883L magnetometer
  * and BMP280 pressure sensor
  * 
  * @copyright Apache 2.0
 */
-
 #include <stdio.h>
 #include <math.h>
 #include "freertos/FreeRTOS.h"
@@ -14,7 +13,7 @@
 #include "freertos/semphr.h"
 #include "driver/i2c_master.h"
 #include "esp_mpu6050.h"
-#include "esp_qmc5883l.h"
+#include "esp_hmc5883l.h"
 #include "esp_bmp280.h"
 #include "esp_matrix.h"
 #include "esp_log.h"

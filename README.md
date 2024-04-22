@@ -1,12 +1,12 @@
 # ESP-IDF component for 10 DOF IMU with Kalman filter
-10 DOF IMU sensor made from sensor fusion of MPU6050 accelerometer and gyroscope, QMC5883L magnetometer and BMP280 pressure sensor.
+10 DOF IMU sensor made from sensor fusion of MPU6050 accelerometer and gyroscope, HMC5883L magnetometer and BMP280 pressure sensor.
 
 ## Notes
 * Adjust Kalman filter with macros: `STD_DEV_V_E`/`STD_DEV_V_H` and `STD_DEV_W_E`/`STD_DEV_W_H` in `kalman_mpu6050.h`.
-* Make sure to comment out `#define QMC5883L_I2C_INIT            1 // uncomment to initialize I2C driver` in `esp_qmc5883l.h`.
+* Make sure to comment out `#define HMC5883L_I2C_INIT            1 // uncomment to initialize I2C driver` in `esp_hmc5883l.h`.
 * Make sure to comment out `#define BMP280_I2C_INIT   1 // uncomment to initialize I2C driver` in `esp_bmp280.h`.
-* This component requires `esp_mpu6050`, `esp_qmc5883l`, `esp_bmp280` and `esp_matrix` components to work.
-* Check `imu_get_data()` and `calculate_euler_angle_from_accel` functions for proper MPU6050 and QMC5883L mounting and edit them if needed.
+* This component requires `esp_mpu6050`, `esp_hmc5883l`, `esp_bmp280` and `esp_matrix` components to work.
+* Check `imu_get_data()` and `calculate_euler_angle_from_accel` functions for proper MPU6050 and HMC5883L mounting and edit them if needed.
 * This component will work only with ESP-IDF version greater than v5.2.0.
 
 ## SDK configuration
@@ -25,7 +25,7 @@
 ## Sources
 * https://github.com/JanG175/esp_mpu6050
 * https://github.com/JanG175/esp_matrix
-* https://github.com/JanG175/esp_qmc5883l
+* https://github.com/JanG175/esp_hmc5883l
 * https://github.com/JanG175/esp_bmp280
 
 ## How 2 use?
