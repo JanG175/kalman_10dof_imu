@@ -321,8 +321,6 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
     // Kalman filter
     while (1)
     {
-        int64_t lt = esp_timer_get_time();
-
         last_time = xTaskGetTickCount();
 
         // new measurement
@@ -417,9 +415,6 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
             static_kalman_data.height = task_kalman_data.height;
 
             xSemaphoreGive(mutex);
-
-            ESP_LOGI(TAG, "loop time: %lld us", esp_timer_get_time() - lt);
-            // vTaskDelay(100 / portTICK_PERIOD_MS);
 
             xTaskDelayUntil(&last_time, DT / portTICK_PERIOD_MS);
         }
