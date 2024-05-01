@@ -6,7 +6,7 @@
 * Make sure to comment out `#define HMC5883L_I2C_INIT            1 // uncomment to initialize I2C driver` in `esp_hmc5883l.h`.
 * Make sure to comment out `#define BMP280_I2C_INIT   1 // uncomment to initialize I2C driver` in `esp_bmp280.h`.
 * Make sure to uncomment `#define TFLC02_INIT_UART          1 // uncomment to initialize UART` in `esp_tf-lc02.h`.
-* This component requires `esp_mpu6050`, `esp_hmc5883l`, `esp_bmp280` and `espressif/esp-dsp` components to work.
+* This component requires `esp_mpu6050`, `esp_hmc5883l`, `esp_bmp280`, `esp_tf-lc02` and `espressif/esp-dsp` components to work.
 * Check `imu_get_data()` and `calculate_euler_angle_from_accel` functions for proper MPU6050 and HMC5883L mounting and edit them if needed.
 * This component will work only with ESP-IDF version greater than v5.2.0.
 
