@@ -81,7 +81,7 @@ static void calculate_euler_angle_from_accel(mpu6050_acce_value_t* acce_data, ma
  * @param W_h sensor noise matrix
 */
 static void imu_get_data(mpu6050_acce_value_t* acce, mpu6050_gyro_value_t* gyro, magnetometer_raw_t* mag, float* height,
-                    dspm::Mat V_h, dspm::Mat W_h)
+                    dspm::Mat& V_h, dspm::Mat& W_h)
 {
     ESP_ERROR_CHECK(mpu6050_get_acce(mpu, acce));
     ESP_ERROR_CHECK(mpu6050_get_gyro(mpu, gyro));
