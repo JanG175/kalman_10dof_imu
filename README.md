@@ -5,7 +5,8 @@
 * Adjust Kalman filter with macros: `STD_DEV_V_E`/`STD_DEV_V_H` and `STD_DEV_W_E`/`STD_DEV_W_H` in `kalman_mpu6050.h`.
 * Make sure to comment out `#define HMC5883L_I2C_INIT            1 // uncomment to initialize I2C driver` in `esp_hmc5883l.h`.
 * Make sure to comment out `#define BMP280_I2C_INIT   1 // uncomment to initialize I2C driver` in `esp_bmp280.h`.
-* This component requires `esp_mpu6050`, `esp_hmc5883l`, `esp_bmp280` and `esp_matrix` components to work.
+* Make sure to uncomment `#define TFLC02_INIT_UART          1 // uncomment to initialize UART` in `esp_tf-lc02.h`.
+* This component requires `esp_mpu6050`, `esp_hmc5883l`, `esp_bmp280` and `espressif/esp-dsp` components to work.
 * Check `imu_get_data()` and `calculate_euler_angle_from_accel` functions for proper MPU6050 and HMC5883L mounting and edit them if needed.
 * This component will work only with ESP-IDF version greater than v5.2.0.
 
@@ -22,12 +23,21 @@
 
 ![compiler](images/compiler.png)
 
+Those variables can be also set in `sdkconfig.defaults` file (example for ESP32S3):
+```
+CONFIG_FREERTOS_HZ=1000
+CONFIG_BOOTLOADER_COMPILER_OPTIMIZATION_PERF=y
+CONFIG_COMPILER_OPTIMIZATION_PERF=y
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
+CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ=240
+```
+
 ## Sources
 * https://github.com/JanG175/esp_mpu6050
-* https://github.com/JanG175/esp_matrix
 * https://github.com/JanG175/esp_hmc5883l
 * https://github.com/JanG175/esp_bmp280
 * https://github.com/JanG175/esp_tf-lc02
+* https://github.com/espressif/esp-dsp
 
 ## How 2 use?
 ```C

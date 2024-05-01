@@ -9,16 +9,24 @@
 
 #include <stdio.h>
 #include <math.h>
+#include "dsp_platform.h"
+#include "esp_dsp.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 #include "driver/i2c_master.h"
+#include "esp_log.h"
 #include "esp_mpu6050.h"
 #include "esp_hmc5883l.h"
 #include "esp_bmp280.h"
 #include "esp_tf-lc02.h"
-#include "esp_matrix.h"
-#include "esp_log.h"
+
+#include "esp_timer.h"
 
 #define DT               4 // integration step in ms
 
@@ -78,3 +86,7 @@ typedef struct
 void imu_init(imu_conf_t imu_conf);
 
 void imu_get_kalman_data(kalman_data_t* kalman_data);
+
+#ifdef __cplusplus
+}
+#endif
