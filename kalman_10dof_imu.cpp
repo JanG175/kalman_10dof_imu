@@ -81,7 +81,7 @@ static void calculate_euler_angle_from_accel(mpu6050_acce_value_t* acce_data, ma
  * @param W_h sensor noise matrix
 */
 static void imu_get_data(mpu6050_acce_value_t* acce, mpu6050_gyro_value_t* gyro, magnetometer_raw_t* mag, float* height,
-                    dspm::Mat& V_h, dspm::Mat& W_h)
+                    dspm::Mat &V_h, dspm::Mat &W_h)
 {
     ESP_ERROR_CHECK(mpu6050_get_acce(mpu, acce));
     ESP_ERROR_CHECK(mpu6050_get_gyro(mpu, gyro));
@@ -321,6 +321,10 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
     // Kalman filter
     while (1)
     {
+#ifdef TEST_PERFORMANCE
+        int64_t loop_start = esp_timer_get_time();
+#endif
+
         last_time = xTaskGetTickCount();
 
         // new measurement
@@ -416,6 +420,10 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
 
             xSemaphoreGive(mutex);
 
+#ifdef TEST_PERFORMANCE
+            ESP_LOGI(TAG, "%lld us", esp_timer_get_time() - loop_start);
+#endif
+
             xTaskDelayUntil(&last_time, DT / portTICK_PERIOD_MS);
         }
         else
@@ -477,7 +485,7 @@ extern "C" void imu_init(imu_conf_t imu_conf)
 
     // initialize BMP280 sensor
     bmp.i2c_port = imu_conf.i2c_port;
-    bmp.i2c_addr = BMP280_I2C_ADDRESS_1;
+    bmp.i2c_addr = BMP280_I2C_ADDRESS_0;
     bmp.sda_pin = imu_conf.sda_pin;
     bmp.scl_pin = imu_conf.scl_pin;
     bmp.i2c_freq = imu_conf.i2c_freq;
@@ -488,6 +496,11 @@ extern "C" void imu_init(imu_conf_t imu_conf)
     tflc.tx_pin = imu_conf.uart_tx_pin;
     tflc.rx_pin = imu_conf.uart_rx_pin;
     tflc02_init(tflc);
+
+    // probe sensors
+    ESP_ERROR_CHECK(i2c_master_probe(bus_handle, MPU6050_I2C_ADDRESS, 0));
+    ESP_ERROR_CHECK(i2c_master_probe(bus_handle, HMC5883L_ADDR, 0));
+    ESP_ERROR_CHECK(i2c_master_probe(bus_handle, bmp.i2c_addr, 0));
 
     if (xSemaphoreTake(mutex, portMAX_DELAY) == pdTRUE)
     {

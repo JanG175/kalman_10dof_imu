@@ -6,6 +6,7 @@
  * 
  * @copyright Apache 2.0
 */
+
 #include <stdio.h>
 #include <math.h>
 #include "dsp_platform.h"
@@ -20,12 +21,15 @@ extern "C" {
 #include "freertos/semphr.h"
 #include "driver/i2c_master.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "esp_mpu6050.h"
 #include "esp_hmc5883l.h"
 #include "esp_bmp280.h"
 #include "esp_tf-lc02.h"
 
-#define DT               4 // integration step in ms
+// #define TEST_PERFORMANCE 0 // uncomment to test loop performance
+
+#define DT               5 // integration step in ms
 
 // euler angles kalman filter
 #define STD_DEV_V_E      0.01 // process noise
