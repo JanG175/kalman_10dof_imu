@@ -37,11 +37,11 @@ extern "C" {
 
 // barometer height kalman filter
 #define STD_DEV_V_H_B    0.01 // process noise
-#define STD_DEV_W_H_B    0.1 // sensor noise
+#define STD_DEV_W_H_B    0.05 // sensor noise
 
 // tof height kalman filter
-#define STD_DEV_V_H_T    0.1 // process noise
-#define STD_DEV_W_H_T    0.5 // sensor noise
+#define STD_DEV_V_H_T    0.05 // process noise
+#define STD_DEV_W_H_T    0.1 // sensor noise
 
 typedef struct
 {

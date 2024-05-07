@@ -19,6 +19,8 @@ static tflc02_conf_t tflc;
 
 static SemaphoreHandle_t mutex = NULL;
 static kalman_data_t static_kalman_data;
+static float height_offset = 0.0f;
+static bool new_offset_flag = false;
 
 i2c_master_bus_handle_t bus_handle; // I2C bus handle for all components
 
@@ -94,21 +96,35 @@ static void imu_get_data(mpu6050_acce_value_t* acce, mpu6050_gyro_value_t* gyro,
     uint16_t tof_height = (uint16_t)(*height * 1000.0f);
     esp_err_t err = tflc02_measure_distance(tflc, &tof_height);
 
-    if (err != ESP_OK) // if TOF sensor fails, use BMP280 sensor
-    {
-        bmp280_read_height(bmp, height);
-
-        V_h(0, 0) = powf(STD_DEV_V_H_B, 2.0f);
-        V_h(1 ,1) = powf(STD_DEV_V_H_B, 2.0f);
-        W_h(0, 0) = powf(STD_DEV_W_H_B, 2.0f);
-    }
-    else // use TOF sensor
+    if (err == ESP_OK) // use TOF sensor
     {
         *height = (float)tof_height / 1000.0f; // convert to meters
 
         V_h(0, 0) = powf(STD_DEV_V_H_T, 2.0f);
         V_h(1, 1) = powf(STD_DEV_V_H_T, 2.0f);
         W_h(0, 0) = powf(STD_DEV_W_H_T, 2.0f);
+
+        new_offset_flag = true;
+    }
+    else if (*height > 1.5f) // if TOF sensor fails, use BMP280 sensor
+    {
+        // if previous measurement was from TOF sensor, set new height offset for linear transition
+        if (new_offset_flag)
+        {
+            height_offset = *height;
+            bmp280_set_sea_level_pressure(bmp);
+        }
+        else
+        {
+            bmp280_read_height(bmp, height);
+            *height += height_offset;
+
+            V_h(0, 0) = powf(STD_DEV_V_H_B, 2.0f);
+            V_h(1 ,1) = powf(STD_DEV_V_H_B, 2.0f);
+            W_h(0, 0) = powf(STD_DEV_W_H_B, 2.0f);
+        }
+
+        new_offset_flag = false;
     }
 }
 
