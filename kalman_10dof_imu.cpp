@@ -106,7 +106,7 @@ static void imu_get_data(mpu6050_acce_value_t* acce, mpu6050_gyro_value_t* gyro,
 
         new_offset_flag = true;
     }
-    else if (*height > 1.5f) // if TOF sensor fails, use BMP280 sensor
+    else if (*height > 2.0f) // if TOF sensor fails, use BMP280 sensor
     {
         // if previous measurement was from TOF sensor, set new height offset for linear transition
         if (new_offset_flag)
