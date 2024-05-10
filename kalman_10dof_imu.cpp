@@ -19,8 +19,6 @@ static tflc02_conf_t tflc;
 
 static SemaphoreHandle_t mutex = NULL;
 static kalman_data_t static_kalman_data;
-static float height_offset = 0.0f;
-static bool new_offset_flag = false;
 
 i2c_master_bus_handle_t bus_handle; // I2C bus handle for all components
 
@@ -81,9 +79,11 @@ static void calculate_euler_angle_from_accel(mpu6050_acce_value_t* acce_data, ma
  * @param height height data
  * @param V_h process noise matrix
  * @param W_h sensor noise matrix
+ * @param height_offset height offset
+ * @param new_offset_flag new height offset flag
 */
 static void imu_get_data(mpu6050_acce_value_t* acce, mpu6050_gyro_value_t* gyro, magnetometer_raw_t* mag, float* height,
-                    dspm::Mat &V_h, dspm::Mat &W_h)
+                    dspm::Mat &V_h, dspm::Mat &W_h, float* height_offset, bool* new_offset_flag)
 {
     ESP_ERROR_CHECK(mpu6050_get_acce(mpu, acce));
     ESP_ERROR_CHECK(mpu6050_get_gyro(mpu, gyro));
@@ -104,27 +104,27 @@ static void imu_get_data(mpu6050_acce_value_t* acce, mpu6050_gyro_value_t* gyro,
         V_h(1, 1) = powf(STD_DEV_V_H_T, 2.0f);
         W_h(0, 0) = powf(STD_DEV_W_H_T, 2.0f);
 
-        new_offset_flag = true;
+        *new_offset_flag = true;
     }
     else if (*height > 2.0f) // if TOF sensor fails, use BMP280 sensor
     {
         // if previous measurement was from TOF sensor, set new height offset for linear transition
-        if (new_offset_flag)
+        if (*new_offset_flag)
         {
-            height_offset = *height;
+            *height_offset = *height;
             bmp280_set_sea_level_pressure(bmp);
         }
         else
         {
             bmp280_read_height(bmp, height);
-            *height += height_offset;
+            *height += *height_offset;
 
             V_h(0, 0) = powf(STD_DEV_V_H_B, 2.0f);
             V_h(1 ,1) = powf(STD_DEV_V_H_B, 2.0f);
             W_h(0, 0) = powf(STD_DEV_W_H_B, 2.0f);
         }
 
-        new_offset_flag = false;
+        *new_offset_flag = false;
     }
 }
 
@@ -137,6 +137,9 @@ static void imu_get_data(mpu6050_acce_value_t* acce, mpu6050_gyro_value_t* gyro,
 static IRAM_ATTR void kalman_data_read(void* pvParameters)
 {
     float dt = (float)DT / 1000.0f; // convert to seconds
+
+    float height_offset = 0.0f;
+    bool new_offset_flag = false;
 
     // init measurement
     mpu6050_acce_value_t acce_data;
@@ -154,7 +157,7 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
     dspm::Mat W_h(1, 1);
     W_h(0, 0) = powf(STD_DEV_W_H_T, 2.0f);
 
-    imu_get_data(&acce_data, &gyro_data, &mag_data, &h_data, V_h, W_h);
+    imu_get_data(&acce_data, &gyro_data, &mag_data, &h_data, V_h, W_h, &height_offset, &new_offset_flag);
 
     kalman_data_t task_kalman_data;
     euler_angle_t acce_euler_angle;
@@ -201,11 +204,11 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
 
     height:
 
-    --    --   --    --   --    --   --        --
-    | h[k] |   | 1 dt |   | h[k] |   | 0.5*dt^2 |   --     --
-    |      | = |      | * |      | + |          | * | Az[k] |
-    | v[k] |   | 0  1 |   | v[k] |   |     0    |   --     --
-    --    --   --    --   --    --   --        --
+    --      --   --    --   --    --   --        --
+    | h[k+1] |   | 1 dt |   | h[k] |   | 0.5*dt^2 |   --     --
+    |        | = |      | * |      | + |          | * | Az[k] |
+    | v[k+1] |   | 0  1 |   | v[k] |   |     0    |   --     --
+    --      --   --    --   --    --   --        --
 
                      --    --
            --   --   | h[k] |
@@ -344,7 +347,7 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
         last_time = xTaskGetTickCount();
 
         // new measurement
-        imu_get_data(&acce_data, &gyro_data, &mag_data, &h_data, V_h, W_h);
+        imu_get_data(&acce_data, &gyro_data, &mag_data, &h_data, V_h, W_h, &height_offset, &new_offset_flag);
 
         calculate_euler_angle_from_accel(&acce_data, &mag_data, &acce_euler_angle);
 
@@ -359,25 +362,25 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
         // euler angles kalman
 
         // Xpri_e
-        Xpri_e = (A_e * Xpost_e) + (B_e * U_e);
+        Xpri_e = A_e * Xpost_e + B_e * U_e;
 
         // Ppri_e
-        Ppri_e = (A_e * Ppost_e * A_e.t()) + V_e;
+        Ppri_e = A_e * Ppost_e * A_e.t() + V_e;
 
         // E_e
-        E_e = Y_e - (C_e * Xpri_e);
+        E_e = Y_e - C_e * Xpri_e;
 
         // S_e
-        S_e = (C_e * Ppri_e * C_e.t()) + W_e;
+        S_e = C_e * Ppri_e * C_e.t() + W_e;
 
         // K_e
-        K_e = (Ppri_e * C_e.t()) * S_e.inverse();
+        K_e = Ppri_e * C_e.t() * S_e.inverse();
 
         // Xpost_e
-        Xpost_e = Xpri_e + (K_e * E_e);
+        Xpost_e = Xpri_e + K_e * E_e;
 
         // Ppost_e
-        Ppost_e = Ppri_e - (K_e * S_e * K_e.t());
+        Ppost_e = Ppri_e - K_e * S_e * K_e.t();
 
         // calculate euler angle from gyro
         task_kalman_data.acce_roll = Xpost_e(0, 0);
