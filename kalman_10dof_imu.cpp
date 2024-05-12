@@ -337,6 +337,8 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
     TickType_t last_time = 0;
     TickType_t mutex_wait = 0;
 
+    bool init = true;
+
     // Kalman filter
     while (1)
     {
@@ -350,6 +352,20 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
         imu_get_data(&acce_data, &gyro_data, &mag_data, &h_data, V_h, W_h, &height_offset, &new_offset_flag);
 
         calculate_euler_angle_from_accel(&acce_data, &mag_data, &acce_euler_angle);
+
+        // prevent yaw wrapping
+        float wrap = 0.0f;
+        if (init == false)
+        {
+            wrap = fabs(task_kalman_data.mag_yaw - task_kalman_data.gyro_yaw);
+
+            if (task_kalman_data.mag_yaw - task_kalman_data.gyro_yaw > YAW_WRAP_TRESH)
+                gyro_data.gyro_z += wrap / dt;
+            else if (task_kalman_data.mag_yaw - task_kalman_data.gyro_yaw < -YAW_WRAP_TRESH)
+                gyro_data.gyro_z -= wrap / dt;
+        }
+
+        // update input and output matrices
 
         U_e(0, 0) = gyro_data.gyro_x;
         U_e(0, 1) = gyro_data.gyro_y;
@@ -390,6 +406,20 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
         task_kalman_data.gyro_roll += (gyro_data.gyro_x - Xpost_e(1, 0)) * dt;
         task_kalman_data.gyro_pitch += (gyro_data.gyro_y - Xpost_e(1, 1)) * dt;
         task_kalman_data.gyro_yaw += (gyro_data.gyro_z - Xpost_e(1, 2)) * dt;
+
+        // prevent error during yaw wrapping
+        if (task_kalman_data.gyro_yaw > 180.0f)
+        {
+            task_kalman_data.gyro_yaw -= (gyro_data.gyro_z - Xpost_e(1, 2)) * dt;
+            gyro_data.gyro_z -= wrap / dt;
+            task_kalman_data.gyro_yaw += (gyro_data.gyro_z - Xpost_e(1, 2)) * dt;
+        }
+        else if (task_kalman_data.gyro_yaw < -180.0f)
+        {
+            task_kalman_data.gyro_yaw -= (gyro_data.gyro_z - Xpost_e(1, 2)) * dt;
+            gyro_data.gyro_z += wrap / dt;
+            task_kalman_data.gyro_yaw += (gyro_data.gyro_z - Xpost_e(1, 2)) * dt;
+        }
 
         // height kalman
 
@@ -449,6 +479,8 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
         {
             ESP_LOGE(TAG, "Failed to take mutex to update");
         }
+
+        init = false;
     }
 
     vTaskDelete(NULL);

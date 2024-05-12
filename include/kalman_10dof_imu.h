@@ -27,9 +27,11 @@ extern "C" {
 #include "esp_bmp280.h"
 #include "esp_tf-lc02.h"
 
-// #define TEST_PERFORMANCE 0 // uncomment to test loop performance
+// #define TEST_PERFORMANCE 1 // uncomment to test loop performance
 
 #define DT               5 // integration step in ms
+
+#define YAW_WRAP_TRESH   250.0f // yaw wrap threshold
 
 // euler angles kalman filter
 #define STD_DEV_V_E      0.01 // process noise
