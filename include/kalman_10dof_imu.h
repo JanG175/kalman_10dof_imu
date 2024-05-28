@@ -34,16 +34,16 @@ extern "C" {
 #define YAW_WRAP_TRESH   250.0f // yaw wrap threshold
 
 // euler angles kalman filter
-#define STD_DEV_V_E      0.01 // process noise
-#define STD_DEV_W_E      0.02 // sensor noise
+#define STD_DEV_V_E      0.001f // process noise
+#define STD_DEV_W_E      0.01 // sensor noise
 
 // barometer height kalman filter
-#define STD_DEV_V_H_B    0.01 // process noise
-#define STD_DEV_W_H_B    0.05 // sensor noise
+#define STD_DEV_V_H_B    0.01f // process noise
+#define STD_DEV_W_H_B    0.1f // sensor noise
 
 // tof height kalman filter
-#define STD_DEV_V_H_T    0.05 // process noise
-#define STD_DEV_W_H_T    0.1 // sensor noise
+#define STD_DEV_V_H_T    0.01f // process noise
+#define STD_DEV_W_H_T    0.001f // sensor noise
 
 typedef struct
 {

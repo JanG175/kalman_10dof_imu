@@ -53,8 +53,8 @@ static float calculate_z_accel(mpu6050_acce_value_t* acce_data, kalman_data_t* k
 static void calculate_euler_angle_from_accel(mpu6050_acce_value_t* acce_data, magnetometer_raw_t* mag_data,
                                                 euler_angle_t* euler_angle)
 {
-    euler_angle->roll = atan2f(acce_data->acce_y, acce_data->acce_z);
-    euler_angle->pitch = atan2f(acce_data->acce_x, acce_data->acce_z);
+    euler_angle->roll = atan2f(acce_data->acce_y, sqrt(powf(acce_data->acce_x, 2.0f) + powf(acce_data->acce_z, 2.0f)));
+    euler_angle->pitch = atan2f(acce_data->acce_x, sqrt(powf(acce_data->acce_y, 2.0f) + powf(acce_data->acce_z, 2.0f)));
 
     float mag_x = mag_data->x * cosf(euler_angle->pitch) +
                     mag_data->z * cosf(euler_angle->roll) * sinf(euler_angle->pitch) +
