@@ -47,7 +47,7 @@ extern "C" {
 
 typedef struct
 {
-    i2c_port_t i2c_port;
+    i2c_port_num_t i2c_port;
     gpio_num_t sda_pin;
     gpio_num_t scl_pin;
     uint32_t i2c_freq;
@@ -62,7 +62,21 @@ typedef struct
     float x;
     float y;
     float z;
-} magnetometer_raw_t;
+} acce_raw_t;
+
+typedef struct
+{
+    float x;
+    float y;
+    float z;
+} gyro_raw_t;
+
+typedef struct
+{
+    float x;
+    float y;
+    float z;
+} mag_raw_t;
 
 typedef struct
 {
