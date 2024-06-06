@@ -34,8 +34,8 @@ extern "C" {
 #define YAW_WRAP_TRESH   250.0f // yaw wrap threshold
 
 // euler angles kalman filter
-#define STD_DEV_V_E      0.001f // process noise
-#define STD_DEV_W_E      0.01 // sensor noise
+#define STD_DEV_V_E      0.0001f // process noise
+#define STD_DEV_W_E      0.001 // sensor noise
 
 // barometer height kalman filter
 #define STD_DEV_V_H_B    0.01f // process noise
