@@ -2,6 +2,7 @@
 10 DOF IMU sensor made from sensor fusion of MPU6050 accelerometer and gyroscope, HMC5883L magnetometer, TF-LC02 TOF distance sensor and BMP280 pressure sensor.
 
 ## Notes
+* Start the program while sensors are laying still.
 * Adjust Kalman filter with macros: `STD_DEV_V_E`/`STD_DEV_V_H` and `STD_DEV_W_E`/`STD_DEV_W_H` in `kalman_mpu6050.h`.
 * Make sure to comment out `#define HMC5883L_I2C_INIT            1 // uncomment to initialize I2C driver` in `esp_hmc5883l.h`.
 * Make sure to comment out `#define BMP280_I2C_INIT   1 // uncomment to initialize I2C driver` in `esp_bmp280.h`.

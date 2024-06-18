@@ -52,8 +52,8 @@ static float calculate_z_accel(acce_raw_t* acce_data, kalman_data_t* kalman_data
 */
 static void calculate_euler_angle_from_accel(acce_raw_t* acce_data, mag_raw_t* mag_data, euler_angle_t* euler_angle)
 {
-    euler_angle->roll = atan2f(acce_data->y, sqrt(powf(acce_data->x, 2.0f) + powf(acce_data->z, 2.0f)));
-    euler_angle->pitch = atan2f(acce_data->x, sqrt(powf(acce_data->y, 2.0f) + powf(acce_data->z, 2.0f)));
+    euler_angle->roll = atan2f(acce_data->y, acce_data->z);
+    euler_angle->pitch = atan2f(acce_data->x, sqrtf(powf(acce_data->y, 2.0f) + powf(acce_data->z, 2.0f)));
 
     float mag_x = mag_data->x * cosf(euler_angle->pitch) +
                     mag_data->z * cosf(euler_angle->roll) * sinf(euler_angle->pitch) +
