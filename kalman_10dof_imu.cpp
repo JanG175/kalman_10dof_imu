@@ -162,6 +162,9 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
     euler_angle_t acce_euler_angle;
     calculate_euler_angle_from_accel(&acce_data, &mag_data, &acce_euler_angle);
 
+    task_kalman_data.acce_roll = acce_euler_angle.roll;
+    task_kalman_data.acce_pitch = acce_euler_angle.pitch;
+    task_kalman_data.mag_yaw = acce_euler_angle.yaw;
     task_kalman_data.gyro_roll = acce_euler_angle.roll;
     task_kalman_data.gyro_pitch = acce_euler_angle.pitch;
     task_kalman_data.gyro_yaw = acce_euler_angle.yaw;
@@ -169,6 +172,9 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
     // zero roll, pitch and yaw with accelerometer
     if (xSemaphoreTake(mutex, portMAX_DELAY) == pdTRUE)
     {
+        static_kalman_data.acce_roll = acce_euler_angle.roll;
+        task_kalman_data.acce_pitch = acce_euler_angle.pitch;
+        task_kalman_data.mag_yaw = acce_euler_angle.yaw;
         static_kalman_data.gyro_roll = acce_euler_angle.roll;
         static_kalman_data.gyro_pitch = acce_euler_angle.pitch;
         static_kalman_data.gyro_yaw = acce_euler_angle.yaw;
@@ -338,6 +344,13 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
 
     bool init = true;
 
+    const uint8_t N = 5;
+    int8_t is_wrap[N];
+    for (uint8_t i = 0; i < N; i++)
+        is_wrap[i] = 0;
+    uint8_t wrap_index = 0;
+    int8_t wrap_allowed = 0;
+
     // Kalman filter
     while (1)
     {
@@ -353,15 +366,39 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
         calculate_euler_angle_from_accel(&acce_data, &mag_data, &acce_euler_angle);
 
         // prevent yaw wrapping
-        float wrap = 0.0f;
         if (init == false)
         {
-            wrap = fabs(task_kalman_data.mag_yaw - task_kalman_data.gyro_yaw);
+            // check if yaw sign is stable on wrap threshold
+            if (task_kalman_data.mag_yaw > YAW_WRAP_TRESH)
+                is_wrap[wrap_index] = 1;
+            else if (task_kalman_data.mag_yaw < -YAW_WRAP_TRESH)
+                is_wrap[wrap_index] = -1;
+            else
+                is_wrap[wrap_index] = 0;
 
-            if (task_kalman_data.mag_yaw - task_kalman_data.gyro_yaw > YAW_WRAP_TRESH)
-                gyro_data.z += wrap / dt;
-            else if (task_kalman_data.mag_yaw - task_kalman_data.gyro_yaw < -YAW_WRAP_TRESH)
-                gyro_data.z -= wrap / dt;
+            int8_t sum_is_wrap = 0;
+            if (is_wrap[wrap_index] != 0)
+                for (uint8_t i = 0; i < N; i++)
+                    sum_is_wrap += is_wrap[i];
+            wrap_index = (wrap_index + 1) % N;
+
+            if (wrap_allowed == 0)
+            {
+                // check if if yaw wrap can occur (wrap_allowed = 1 or -1)
+                if (abs(sum_is_wrap) == N)
+                {
+                    wrap_allowed = sum_is_wrap / N;
+
+                    for (uint8_t i = 0; i < N; i++)
+                        is_wrap[i] = 0;
+                }
+            }
+            else if (abs(wrap_allowed) == 1)
+            {
+                // check if yaw wrap has occurred (wrap_allowed = 2 or -2)
+                if (sum_is_wrap == -wrap_allowed * N)
+                    wrap_allowed = wrap_allowed * 2;
+            }
         }
 
         // update input and output matrices
@@ -404,20 +441,22 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
 
         task_kalman_data.gyro_roll += (gyro_data.x - Xpost_e(1, 0)) * dt;
         task_kalman_data.gyro_pitch += (gyro_data.y - Xpost_e(1, 1)) * dt;
-        task_kalman_data.gyro_yaw += (gyro_data.z - Xpost_e(1, 2)) * dt;
 
-        // prevent error during yaw wrapping
-        if (task_kalman_data.gyro_yaw > 180.0f)
+        // yaw wrapping
+        float wrap = 0.0f;
+        if (wrap_allowed == 2 || wrap_allowed == -2)
+            wrap = task_kalman_data.mag_yaw - task_kalman_data.gyro_yaw;
+
+        task_kalman_data.gyro_yaw += (gyro_data.z - Xpost_e(1, 2)) * dt + wrap;
+
+        if (wrap_allowed == 2 || wrap_allowed == -2)
         {
-            task_kalman_data.gyro_yaw -= (gyro_data.z - Xpost_e(1, 2)) * dt;
-            gyro_data.z -= wrap / dt;
-            task_kalman_data.gyro_yaw += (gyro_data.z - Xpost_e(1, 2)) * dt;
-        }
-        else if (task_kalman_data.gyro_yaw < -180.0f)
-        {
-            task_kalman_data.gyro_yaw -= (gyro_data.z - Xpost_e(1, 2)) * dt;
-            gyro_data.z += wrap / dt;
-            task_kalman_data.gyro_yaw += (gyro_data.z - Xpost_e(1, 2)) * dt;
+            Xpost_e(1, 2) = 0.0f; // reset gyro drift
+
+            // reset wrap check
+            wrap_allowed = 0;
+            for (uint8_t i = 0; i < N; i++)
+                is_wrap[i] = 0;
         }
 
         // height kalman
@@ -570,7 +609,7 @@ extern "C" void imu_init(imu_conf_t imu_conf)
         ESP_LOGE(TAG, "Failed to take mutex to init");
     }
 
-    xTaskCreate(kalman_data_read, "kalman filter", 8192, NULL, 10, NULL);
+    xTaskCreate(kalman_data_read, "kalman filter", 8192, NULL, 17, NULL);
 }
 
 
