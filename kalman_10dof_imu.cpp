@@ -12,15 +12,18 @@
 
 static const char* TAG = "kalman_10_dof_imu";
 
+// I2C handles
 static mpu6050_conf_t mpu;
 static hmc5883l_conf_t hmc;
 static bmp280_conf_t bmp;
 static tflc02_conf_t tflc;
 
+// I2C bus handle for all components
+i2c_master_bus_handle_t bus_handle;
+
+// kalman data protected by mutex
 static SemaphoreHandle_t mutex = NULL;
 static kalman_data_t static_kalman_data;
-
-i2c_master_bus_handle_t bus_handle; // I2C bus handle for all components
 
 
 /**
@@ -76,13 +79,11 @@ static void calculate_euler_angle_from_accel(acce_raw_t* acce_data, mag_raw_t* m
  * @param gyro gyro data
  * @param mag magnetometer data
  * @param height height data
- * @param V_h process noise matrix
- * @param W_h sensor noise matrix
  * @param height_offset height offset
  * @param new_offset_flag new height offset flag
 */
 static void imu_get_data(acce_raw_t* acce, gyro_raw_t* gyro, mag_raw_t* mag, float* height,
-                    dspm::Mat &V_h, dspm::Mat &W_h, float* height_offset, bool* new_offset_flag)
+                         float* height_offset, bool* new_offset_flag)
 {
     mpu6050_read_accelerometer(mpu, &(acce->x), &(acce->y), &(acce->z));
     mpu6050_read_gyroscope(mpu, &(gyro->x), &(gyro->y), &(gyro->z));
@@ -99,16 +100,12 @@ static void imu_get_data(acce_raw_t* acce, gyro_raw_t* gyro, mag_raw_t* mag, flo
     {
         *height = (float)tof_height / 1000.0f; // convert to meters
 
-        V_h(0, 0) = powf(STD_DEV_V_H_T, 2.0f);
-        V_h(1, 1) = powf(STD_DEV_V_H_T, 2.0f);
-        W_h(0, 0) = powf(STD_DEV_W_H_T, 2.0f);
-
         *new_offset_flag = true;
     }
-    else if (*height > 2.0f) // if TOF sensor fails, use BMP280 sensor
+    else if (*height > 2.0f) // if TOF sensor fails and the drone is high enough, use BMP280 sensor
     {
         // if previous measurement was from TOF sensor, set new height offset for linear transition
-        if (*new_offset_flag)
+        if (*new_offset_flag == true)
         {
             *height_offset = *height;
             bmp280_set_sea_level_pressure(bmp);
@@ -117,10 +114,6 @@ static void imu_get_data(acce_raw_t* acce, gyro_raw_t* gyro, mag_raw_t* mag, flo
         {
             bmp280_read_height(bmp, height);
             *height += *height_offset;
-
-            V_h(0, 0) = powf(STD_DEV_V_H_B, 2.0f);
-            V_h(1 ,1) = powf(STD_DEV_V_H_B, 2.0f);
-            W_h(0, 0) = powf(STD_DEV_W_H_B, 2.0f);
         }
 
         *new_offset_flag = false;
@@ -148,36 +141,36 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
 
     // height sensor noise
     dspm::Mat V_h(2, 2);
-    V_h(0, 0) = powf(STD_DEV_V_H_T, 2.0f);
+    V_h(0, 0) = powf(STD_DEV_V_H, 2.0f);
     V_h(0, 1) = 0.0f;
     V_h(1, 0) = 0.0f;
-    V_h(1, 1) = powf(STD_DEV_V_H_T, 2.0f);
+    V_h(1, 1) = powf(STD_DEV_V_H, 2.0f);
 
     dspm::Mat W_h(1, 1);
-    W_h(0, 0) = powf(STD_DEV_W_H_T, 2.0f);
+    W_h(0, 0) = powf(STD_DEV_W_H, 2.0f);
 
-    imu_get_data(&acce_data, &gyro_data, &mag_data, &h_data, V_h, W_h, &height_offset, &new_offset_flag);
+    imu_get_data(&acce_data, &gyro_data, &mag_data, &h_data, &height_offset, &new_offset_flag);
 
     kalman_data_t task_kalman_data;
-    euler_angle_t acce_euler_angle;
-    calculate_euler_angle_from_accel(&acce_data, &mag_data, &acce_euler_angle);
+    euler_angle_t euler_angle;
+    calculate_euler_angle_from_accel(&acce_data, &mag_data, &euler_angle);
 
-    task_kalman_data.acce_roll = acce_euler_angle.roll;
-    task_kalman_data.acce_pitch = acce_euler_angle.pitch;
-    task_kalman_data.mag_yaw = acce_euler_angle.yaw;
-    task_kalman_data.gyro_roll = acce_euler_angle.roll;
-    task_kalman_data.gyro_pitch = acce_euler_angle.pitch;
-    task_kalman_data.gyro_yaw = acce_euler_angle.yaw;
+    task_kalman_data.acce_roll = euler_angle.roll;
+    task_kalman_data.acce_pitch = euler_angle.pitch;
+    task_kalman_data.mag_yaw = euler_angle.yaw;
+    task_kalman_data.gyro_roll = euler_angle.roll;
+    task_kalman_data.gyro_pitch = euler_angle.pitch;
+    task_kalman_data.gyro_yaw = euler_angle.yaw;
 
     // zero roll, pitch and yaw with accelerometer
     if (xSemaphoreTake(mutex, portMAX_DELAY) == pdTRUE)
     {
-        static_kalman_data.acce_roll = acce_euler_angle.roll;
-        task_kalman_data.acce_pitch = acce_euler_angle.pitch;
-        task_kalman_data.mag_yaw = acce_euler_angle.yaw;
-        static_kalman_data.gyro_roll = acce_euler_angle.roll;
-        static_kalman_data.gyro_pitch = acce_euler_angle.pitch;
-        static_kalman_data.gyro_yaw = acce_euler_angle.yaw;
+        static_kalman_data.acce_roll = euler_angle.roll;
+        task_kalman_data.acce_pitch = euler_angle.pitch;
+        task_kalman_data.mag_yaw = euler_angle.yaw;
+        static_kalman_data.gyro_roll = euler_angle.roll;
+        static_kalman_data.gyro_pitch = euler_angle.pitch;
+        static_kalman_data.gyro_yaw = euler_angle.yaw;
 
         xSemaphoreGive(mutex);
     }
@@ -264,9 +257,9 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
     Ppri_e(1, 1) = 1.0f;
 
     dspm::Mat Xpost_e(2, 3);
-    Xpost_e(0, 0) = acce_euler_angle.roll;
-    Xpost_e(0, 1) = acce_euler_angle.pitch;
-    Xpost_e(0, 2) = acce_euler_angle.yaw;
+    Xpost_e(0, 0) = euler_angle.roll;
+    Xpost_e(0, 1) = euler_angle.pitch;
+    Xpost_e(0, 2) = euler_angle.yaw;
     Xpost_e(1, 0) = 0.0f;
     Xpost_e(1, 1) = 0.0f;
     Xpost_e(1, 2) = 0.0f;
@@ -344,6 +337,7 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
 
     bool init = true;
 
+    // yaw wrapping variables
     const uint8_t N = 5;
     int8_t is_wrap[N];
     for (uint8_t i = 0; i < N; i++)
@@ -361,9 +355,9 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
         last_time = xTaskGetTickCount();
 
         // new measurement
-        imu_get_data(&acce_data, &gyro_data, &mag_data, &h_data, V_h, W_h, &height_offset, &new_offset_flag);
+        imu_get_data(&acce_data, &gyro_data, &mag_data, &h_data, &height_offset, &new_offset_flag);
 
-        calculate_euler_angle_from_accel(&acce_data, &mag_data, &acce_euler_angle);
+        calculate_euler_angle_from_accel(&acce_data, &mag_data, &euler_angle);
 
         // prevent yaw wrapping
         if (init == false)
@@ -407,9 +401,9 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
         U_e(0, 1) = gyro_data.y;
         U_e(0, 2) = gyro_data.z;
 
-        Y_e(0, 0) = acce_euler_angle.roll;
-        Y_e(0, 1) = acce_euler_angle.pitch;
-        Y_e(0, 2) = acce_euler_angle.yaw;
+        Y_e(0, 0) = euler_angle.roll;
+        Y_e(0, 1) = euler_angle.pitch;
+        Y_e(0, 2) = euler_angle.yaw;
 
         // euler angles kalman
 
