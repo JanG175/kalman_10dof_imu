@@ -31,7 +31,7 @@ extern "C" {
 
 #define DT               5 // integration step in ms
 
-#define YAW_WRAP_TRESH   60.0f // yaw wrap threshold
+#define YAW_WRAP_TRESH   50.0f // yaw wrap threshold
 
 // euler angles kalman filter
 #define STD_DEV_V_E      0.0001f // process noise

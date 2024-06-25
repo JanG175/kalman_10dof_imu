@@ -35,10 +35,10 @@ static kalman_data_t static_kalman_data;
 static float calculate_z_accel(acce_raw_t* acce_data, kalman_data_t* kalman_data)
 {
     float roll = kalman_data->gyro_roll * M_PI / 180.0f;
-    float pitch = -kalman_data->gyro_pitch * M_PI / 180.0f; // minus because of CCW angles
+    float pitch = -kalman_data->gyro_pitch * M_PI / 180.0f;
 
     float a_z = acce_data->z * cosf(pitch) * cosf(roll) - acce_data->x * sinf(pitch) + 
-                    acce_data->y * cosf(pitch) * sinf(roll);
+                acce_data->y * cosf(pitch) * sinf(roll);
 
     a_z = (a_z - 1.0f) * 9.81f;
 
@@ -55,20 +55,52 @@ static float calculate_z_accel(acce_raw_t* acce_data, kalman_data_t* kalman_data
 */
 static void calculate_euler_angle_from_accel(acce_raw_t* acce_data, mag_raw_t* mag_data, euler_angle_t* euler_angle)
 {
-    euler_angle->roll = atan2f(acce_data->y, acce_data->z);
-    euler_angle->pitch = atan2f(acce_data->x, sqrtf(powf(acce_data->y, 2.0f) + powf(acce_data->z, 2.0f)));
+    dspm::Mat q(1, 4);
+
+    // normalize accelerometer data
+    float norm_accel = sqrtf(powf(acce_data->x, 2.0f) + powf(acce_data->y, 2.0f) + powf(acce_data->z, 2.0f));
+
+    // calculate accelerometer quaternion
+    if (acce_data->z >= 0)
+    {
+        q(0, 0) = sqrtf((acce_data->z/norm_accel + 1.0f) / 2.0f);
+        q(0, 1) = -acce_data->y/norm_accel / sqrtf(2.0f * (acce_data->z/norm_accel + 1.0f));
+        q(0, 2) = acce_data->x/norm_accel / sqrtf(2.0f * (acce_data->z/norm_accel + 1.0f));
+        q(0, 3) = 0.0f;
+    }
+    else
+    {
+        q(0, 0) = -acce_data->y/norm_accel / sqrtf(2.0f * (1.0f - acce_data->z/norm_accel));
+        q(0, 1) = sqrtf((1.0f - acce_data->z/norm_accel) / 2.0f);
+        q(0, 2) = 0.0f;
+        q(0, 3) = acce_data->x/norm_accel / sqrtf(2.0f * (1.0f - acce_data->z/norm_accel));
+    }
+
+    // calculate euler angles from quaternion
+    euler_angle->roll = atan2f(q(0, 2) * q(0, 3) + q(0, 0) * q(0, 1),
+                               0.5f - (powf(q(0, 1), 2.0f) + powf(q(0, 2), 2.0f)));
+    euler_angle->pitch = asinf(2.0f * (q(0, 0) * q(0, 2) - q(0, 1) * q(0, 3)));
+
+    // calculate yaw angle from magnetometer data
 
     float mag_x = mag_data->x * cosf(euler_angle->pitch) +
-                    mag_data->z * cosf(euler_angle->roll) * sinf(euler_angle->pitch) +
-                    mag_data->y * sinf(euler_angle->roll) * sinf(euler_angle->pitch);
-
+                  mag_data->z * cosf(euler_angle->roll) * sinf(euler_angle->pitch) +
+                  mag_data->y * sinf(euler_angle->roll) * sinf(euler_angle->pitch);
     float mag_y = mag_data->y * cosf(euler_angle->roll) - mag_data->z * sinf(euler_angle->roll);
 
-    euler_angle->yaw = -atan2f(mag_y, mag_x); // minus because of CCW angles
+    euler_angle->yaw = -atan2f(mag_y, mag_x);
 
     euler_angle->roll = euler_angle->roll * 180.0f / M_PI;
     euler_angle->pitch = euler_angle->pitch * 180.0f / M_PI;
     euler_angle->yaw = euler_angle->yaw * 180.0f / M_PI;
+
+    // prevent NaN accumulation
+    if (isnanf(euler_angle->roll))
+        euler_angle->roll = 0.0f;
+    if (isnanf(euler_angle->pitch))
+        euler_angle->pitch = 0.0f;
+    if (isnanf(euler_angle->yaw))
+        euler_angle->yaw = 0.0f;
 }
 
 
@@ -88,8 +120,9 @@ static void imu_get_data(acce_raw_t* acce, gyro_raw_t* gyro, mag_raw_t* mag, flo
     mpu6050_read_accelerometer(mpu, &(acce->x), &(acce->y), &(acce->z));
     mpu6050_read_gyroscope(mpu, &(gyro->x), &(gyro->y), &(gyro->z));
 
-    // CCW angles
+    // correct accelerometer data (for positive roll and pitch angles)
     acce->x = -acce->x;
+    acce->y = -acce->y;
 
     hmc5883l_read_magnetometer(hmc, &(mag->x), &(mag->y), &(mag->z));
 
@@ -344,6 +377,7 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
         is_wrap[i] = 0;
     uint8_t wrap_index = 0;
     int8_t wrap_allowed = 0;
+    uint8_t wrap_count = 0;
 
     // Kalman filter
     while (1)
@@ -368,7 +402,10 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
             else if (task_kalman_data.mag_yaw < -YAW_WRAP_TRESH)
                 is_wrap[wrap_index] = -1;
             else
+            {
                 is_wrap[wrap_index] = 0;
+                wrap_count++;
+            }
 
             int8_t sum_is_wrap = 0;
             if (is_wrap[wrap_index] != 0)
@@ -392,6 +429,13 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
                 // check if yaw wrap has occurred (wrap_allowed = 2 or -2)
                 if (sum_is_wrap == -wrap_allowed * N)
                     wrap_allowed = wrap_allowed * 2;
+            }
+
+            // prevent waiting for wrap if it does not occur
+            if (wrap_count == 50)
+            {
+                wrap_count = 0;
+                wrap_allowed = 0;
             }
         }
 
@@ -449,6 +493,7 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
 
             // reset wrap check
             wrap_allowed = 0;
+            wrap_count = 0;
             for (uint8_t i = 0; i < N; i++)
                 is_wrap[i] = 0;
         }
