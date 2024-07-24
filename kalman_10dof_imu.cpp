@@ -135,7 +135,7 @@ static void imu_get_data(acce_raw_t* acce, gyro_raw_t* gyro, mag_raw_t* mag, flo
 
         *new_offset_flag = true;
     }
-    else if (*height > 2.0f) // if TOF sensor fails and the drone is high enough, use BMP280 sensor
+    else if (*height > 1.8f) // if TOF sensor fails and the drone is high enough, use BMP280 sensor
     {
         // if previous measurement was from TOF sensor, set new height offset for linear transition
         if (*new_offset_flag == true)
@@ -171,16 +171,6 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
     gyro_raw_t gyro_data;
     mag_raw_t mag_data;
     float h_data;
-
-    // height sensor noise
-    dspm::Mat V_h(2, 2);
-    V_h(0, 0) = powf(STD_DEV_V_H, 2.0f);
-    V_h(0, 1) = 0.0f;
-    V_h(1, 0) = 0.0f;
-    V_h(1, 1) = powf(STD_DEV_V_H, 2.0f);
-
-    dspm::Mat W_h(1, 1);
-    W_h(0, 0) = powf(STD_DEV_W_H, 2.0f);
 
     imu_get_data(&acce_data, &gyro_data, &mag_data, &h_data, &height_offset, &new_offset_flag);
 
@@ -264,7 +254,7 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
     C_e(0, 0) = 1.0f;
     C_e(0, 1) = 0.0f;
 
-    // noise
+    // tilt sensor noise
     dspm::Mat V_e(2, 2);
     V_e(0, 0) = powf(STD_DEV_V_E, 2.0f);
     V_e(0, 1) = 0.0f;
@@ -331,6 +321,16 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
     dspm::Mat C_h(1, 2);
     C_h(0, 0) = 1.0f;
     C_h(0, 1) = 0.0f;
+
+    // height sensor noise
+    dspm::Mat V_h(2, 2);
+    V_h(0, 0) = powf(STD_DEV_V_H, 2.0f);
+    V_h(0, 1) = 0.0f;
+    V_h(1, 0) = 0.0f;
+    V_h(1, 1) = powf(STD_DEV_V_H, 2.0f);
+
+    dspm::Mat W_h(1, 1);
+    W_h(0, 0) = powf(STD_DEV_W_H, 2.0f);
 
     // initial states
     dspm::Mat Xpri_h(2, 1);

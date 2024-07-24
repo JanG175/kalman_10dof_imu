@@ -10,7 +10,7 @@
 * This component requires `esp_mpu6050`, `esp_hmc5883l`, `esp_bmp280`, `esp_tf-lc02` and `espressif/esp-dsp` components to work.
 * Check `imu_get_data()` and `calculate_euler_angle_from_accel` functions for proper MPU6050 and HMC5883L mounting and edit them if needed.
 * This component will work only with ESP-IDF version greater or equal to v5.2.0.
-* Readings from barometer sensor will be used only above 2 m high.
+* Readings from barometer sensor will be used only above 1.8 m high.
 * Note that this program will not work properly when sensors are upside down.
 
 ## SDK configuration
