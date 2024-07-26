@@ -624,10 +624,12 @@ extern "C" void imu_init(imu_conf_t imu_conf)
     tflc.rx_pin = imu_conf.uart_rx_pin;
     tflc02_init(tflc);
 
+    vTaskDelay(10 / portTICK_PERIOD_MS);
+
     // probe sensors
-    ESP_ERROR_CHECK(i2c_master_probe(bus_handle, mpu.i2c_addr, 0));
-    ESP_ERROR_CHECK(i2c_master_probe(bus_handle, HMC5883L_ADDR, 0));
-    ESP_ERROR_CHECK(i2c_master_probe(bus_handle, bmp.i2c_addr, 0));
+    ESP_ERROR_CHECK(i2c_master_probe(bus_handle, mpu.i2c_addr, MPU6050_TIMEOUT_MS));
+    ESP_ERROR_CHECK(i2c_master_probe(bus_handle, HMC5883L_ADDR, HMC5883L_TIMEOUT_MS));
+    ESP_ERROR_CHECK(i2c_master_probe(bus_handle, bmp.i2c_addr, BMP280_TIMEOUT_MS));
 
     if (xSemaphoreTake(mutex, portMAX_DELAY) == pdTRUE)
     {
