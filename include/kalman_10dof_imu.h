@@ -35,7 +35,7 @@ extern "C" {
 
 // euler angles kalman filter
 #define STD_DEV_V_E      0.0001f // process noise
-#define STD_DEV_W_E      0.001 // sensor noise
+#define STD_DEV_W_E      0.01f // sensor noise
 
 // height kalman filter
 #define STD_DEV_V_H      0.001f // process noise

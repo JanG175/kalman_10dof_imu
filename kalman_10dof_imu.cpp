@@ -55,31 +55,9 @@ static float calculate_z_accel(acce_raw_t* acce_data, kalman_data_t* kalman_data
 */
 static void calculate_euler_angle_from_accel(acce_raw_t* acce_data, mag_raw_t* mag_data, euler_angle_t* euler_angle)
 {
-    dspm::Mat q(1, 4);
-
-    // normalize accelerometer data
-    float norm_accel = sqrtf(powf(acce_data->x, 2.0f) + powf(acce_data->y, 2.0f) + powf(acce_data->z, 2.0f));
-
-    // calculate accelerometer quaternion
-    if (acce_data->z >= 0)
-    {
-        q(0, 0) = sqrtf((acce_data->z/norm_accel + 1.0f) / 2.0f);
-        q(0, 1) = -acce_data->y/norm_accel / sqrtf(2.0f * (acce_data->z/norm_accel + 1.0f));
-        q(0, 2) = acce_data->x/norm_accel / sqrtf(2.0f * (acce_data->z/norm_accel + 1.0f));
-        q(0, 3) = 0.0f;
-    }
-    else
-    {
-        q(0, 0) = -acce_data->y/norm_accel / sqrtf(2.0f * (1.0f - acce_data->z/norm_accel));
-        q(0, 1) = sqrtf((1.0f - acce_data->z/norm_accel) / 2.0f);
-        q(0, 2) = 0.0f;
-        q(0, 3) = acce_data->x/norm_accel / sqrtf(2.0f * (1.0f - acce_data->z/norm_accel));
-    }
-
-    // calculate euler angles from quaternion
-    euler_angle->roll = atan2f(q(0, 2) * q(0, 3) + q(0, 0) * q(0, 1),
-                               0.5f - (powf(q(0, 1), 2.0f) + powf(q(0, 2), 2.0f)));
-    euler_angle->pitch = asinf(2.0f * (q(0, 0) * q(0, 2) - q(0, 1) * q(0, 3)));
+    // calculate roll and pitch angles from accelerometer data
+    euler_angle->roll = atan2f(-acce_data->y, acce_data->z);
+    euler_angle->pitch = atan2f(acce_data->x, sqrtf(powf(acce_data->y, 2.0f) + powf(acce_data->z, 2.0f)));
 
     // calculate yaw angle from magnetometer data
 
