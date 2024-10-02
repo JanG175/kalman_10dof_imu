@@ -31,6 +31,7 @@ static float prev_yaw = 0.0f;
 static bool start_wrap_up_cnt = false;
 static bool start_wrap_down_cnt = false;
 
+
 /**
  * @brief calculate Z acceleration from accelerometer data
  * 
@@ -391,6 +392,8 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
 
         // new measurement
         imu_get_data(&acce_data, &gyro_data, &mag_data, &h_data, &height_offset, &new_offset_flag);
+        task_kalman_data.gyro_raw_z = gyro_data.z;
+        task_kalman_data.height = h_data;
 
         calculate_euler_angle_from_accel(&acce_data, &mag_data, &euler_angle);
 
@@ -479,7 +482,9 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
             static_kalman_data.gyro_pitch = task_kalman_data.gyro_pitch;
             static_kalman_data.gyro_yaw = task_kalman_data.gyro_yaw;
 
-            static_kalman_data.raw_height = h_data;
+            static_kalman_data.gyro_raw_z = task_kalman_data.gyro_raw_z;
+
+            static_kalman_data.raw_height = task_kalman_data.height;
             static_kalman_data.height = task_kalman_data.height;
 
             xSemaphoreGive(mutex);

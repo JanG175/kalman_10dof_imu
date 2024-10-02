@@ -89,6 +89,8 @@ typedef struct
     float gyro_pitch;
     float gyro_yaw;
 
+    float gyro_raw_z;
+
     float raw_height;
     float height;
 } kalman_data_t;
