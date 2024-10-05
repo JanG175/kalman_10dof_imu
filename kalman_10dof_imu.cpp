@@ -577,9 +577,12 @@ extern "C" void imu_init(imu_conf_t imu_conf)
         static_kalman_data.acce_roll = 0.0f;
         static_kalman_data.acce_pitch = 0.0f;
         static_kalman_data.mag_yaw = 0.0f;
+
         static_kalman_data.gyro_roll = 0.0f;
         static_kalman_data.gyro_pitch = 0.0f;
         static_kalman_data.gyro_yaw = 0.0f;
+
+        static_kalman_data.gyro_raw_z = 0.0f;
 
         static_kalman_data.raw_height = 0.0f;
         static_kalman_data.height = 0.0f;
@@ -611,6 +614,8 @@ extern "C" void imu_get_kalman_data(kalman_data_t* kalman_data)
         kalman_data->gyro_roll = static_kalman_data.gyro_roll;
         kalman_data->gyro_pitch = static_kalman_data.gyro_pitch;
         kalman_data->gyro_yaw = static_kalman_data.gyro_yaw;
+
+        kalman_data->gyro_raw_z = static_kalman_data.gyro_raw_z;
 
         kalman_data->raw_height = static_kalman_data.raw_height;
         kalman_data->height = static_kalman_data.height;
