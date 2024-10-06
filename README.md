@@ -12,6 +12,8 @@
 * This component will work only with ESP-IDF version greater or equal to v5.2.0.
 * Readings from barometer sensor will be used only above 1.8 m high.
 * Note that this program will not work properly when sensors are upside down.
+* Uncomment `// #define TEST_PERFORMANCE 1 // uncomment to test loop performance` in `kalman_10dof_imu.h` to check the performance of the filter.
+* There is also optional complementary filter available. Uncomment `#define COMPLEMENTARY_FILTER 1 // uncomment to use complementary filter instead of kalman filter` in `kalman_10_dof_imu.h` to use it.
 
 ## SDK configuration
 * Set `configTICK_RATE_HZ` to `1000`.
@@ -80,23 +82,17 @@ void app_main(void)
         kalman_data_t kalman_data;
         imu_get_kalman_data(&kalman_data);
 
-        printf(">kalman_acce_roll:");
-        printf("%f\n", kalman_data.acce_roll);
-        printf(">kalman_acce_pitch:");
-        printf("%f\n", kalman_data.acce_pitch);
-        printf(">kalman_mag_yaw:");
-        printf("%f\n", kalman_data.mag_yaw);
-        printf(">kalman_gyro_roll:");
-        printf("%f\n", kalman_data.gyro_roll);
-        printf(">kalman_gyro_pitch:");
-        printf("%f\n", kalman_data.gyro_pitch);
-        printf(">kalman_gyro_yaw:");
-        printf("%f\n", kalman_data.gyro_yaw);
+        printf(">kalman_acce_roll: %f\n", kalman_data.acce_roll);
+        printf(">kalman_acce_pitch: %f\n", kalman_data.acce_pitch);
+        printf(">kalman_mag_yaw: %f\n", kalman_data.mag_yaw);
+        printf(">kalman_gyro_roll: %f\n", kalman_data.gyro_roll);
+        printf(">kalman_gyro_pitch: %f\n", kalman_data.gyro_pitch);
+        printf(">kalman_gyro_yaw: %f\n", kalman_data.gyro_yaw);
 
-        printf(">raw_height:");
-        printf("%f\n", kalman_data.raw_height);
-        printf(">kalman_height:");
-        printf("%f\n", kalman_data.height);
+        printf(">raw_height: %f\n", kalman_data.raw_height);
+        printf(">kalman_height: %f\n", kalman_data.height);
+
+        printf(">gyro_raw_z: %f\n", kalman_data.gyro_raw_z);
 
         vTaskDelay(DT / portTICK_PERIOD_MS);
     }

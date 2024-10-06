@@ -28,13 +28,13 @@ extern "C" {
 #include "esp_tf-lc02.h"
 
 // #define TEST_PERFORMANCE 1 // uncomment to test loop performance
-#define COMPLEMENTARY_FILTER 1 // uncomment to use complementary filter instead of kalman filter
+// #define COMPLEMENTARY_FILTER 1 // uncomment to use complementary filter instead of kalman filter
 
 #define DT               5 // integration step in ms
 
 // euler angles kalman filter
-#define STD_DEV_V_E      0.0001f // process noise
-#define STD_DEV_W_E      0.01f // sensor noise
+#define STD_DEV_V_E      0.00001f // process noise
+#define STD_DEV_W_E      0.008f // sensor noise
 
 // height kalman filter
 #define STD_DEV_V_H      0.001f // process noise
