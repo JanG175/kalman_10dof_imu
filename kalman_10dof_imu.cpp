@@ -397,6 +397,20 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
 
         calculate_euler_angle_from_accel(&acce_data, &mag_data, &euler_angle);
 
+#ifdef COMPLEMENTARY_FILTER
+        // complementary filter
+
+        float a = ALPHA;
+        float b = 1.0f - ALPHA;
+
+        task_kalman_data.acce_roll = euler_angle.roll;
+        task_kalman_data.acce_pitch = euler_angle.pitch;
+        task_kalman_data.mag_yaw = euler_angle.yaw;
+
+        task_kalman_data.gyro_roll = a * (task_kalman_data.gyro_roll + gyro_data.x * dt) + b * euler_angle.roll;
+        task_kalman_data.gyro_pitch = a * (task_kalman_data.gyro_pitch + gyro_data.y * dt) + b * euler_angle.pitch;
+        task_kalman_data.gyro_yaw = a * (task_kalman_data.gyro_yaw + gyro_data.z * dt) + b * euler_angle.yaw;
+#else
         // update input and output matrices
 
         U_e(0, 0) = gyro_data.x;
@@ -438,6 +452,7 @@ static IRAM_ATTR void kalman_data_read(void* pvParameters)
         task_kalman_data.gyro_roll += (gyro_data.x - Xpost_e(1, 0)) * dt;
         task_kalman_data.gyro_pitch += (gyro_data.y - Xpost_e(1, 1)) * dt;
         task_kalman_data.gyro_yaw += (gyro_data.z - Xpost_e(1, 2)) * dt;
+#endif
 
         // height kalman
 

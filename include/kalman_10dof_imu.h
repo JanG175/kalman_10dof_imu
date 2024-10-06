@@ -28,6 +28,7 @@ extern "C" {
 #include "esp_tf-lc02.h"
 
 // #define TEST_PERFORMANCE 1 // uncomment to test loop performance
+#define COMPLEMENTARY_FILTER 1 // uncomment to use complementary filter instead of kalman filter
 
 #define DT               5 // integration step in ms
 
@@ -38,6 +39,9 @@ extern "C" {
 // height kalman filter
 #define STD_DEV_V_H      0.001f // process noise
 #define STD_DEV_W_H      0.01f // sensor noise
+
+// complementary filter
+#define ALPHA            0.98f // complementary filter coefficient
 
 typedef struct
 {
