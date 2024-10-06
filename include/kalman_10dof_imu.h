@@ -30,7 +30,7 @@ extern "C" {
 // #define TEST_PERFORMANCE 1 // uncomment to test loop performance
 // #define COMPLEMENTARY_FILTER 1 // uncomment to use complementary filter instead of kalman filter
 
-#define DT               5 // integration step in ms
+#define DT               4 // integration step in ms
 
 // euler angles kalman filter
 #define STD_DEV_V_E      0.00001f // process noise
