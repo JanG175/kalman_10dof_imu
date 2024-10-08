@@ -33,8 +33,8 @@ extern "C" {
 #define DT               4 // integration step in ms
 
 // euler angles kalman filter
-#define STD_DEV_V_E      0.00001f // process noise
-#define STD_DEV_W_E      0.008f // sensor noise
+#define STD_DEV_V_E      0.0001f // process noise
+#define STD_DEV_W_E      0.005f // sensor noise
 
 // height kalman filter
 #define STD_DEV_V_H      0.001f // process noise
